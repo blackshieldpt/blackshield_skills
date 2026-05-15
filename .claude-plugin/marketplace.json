@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "blackshield-skills",
+  "description": "Blackshield custom Claude Code plugins",
+  "owner": {
+    "name": "Blackshield",
+    "email": "jpinheiro@blackshield.pt"
+  },
+  "plugins": [
+    {
+      "name": "blueprint",
+      "description": "Guidelines for building Go applications on the Blueprint framework and GoAuth authentication library",
+      "author": { "name": "Blackshield" },
+      "source": "./blueprint",
+      "category": "development"
+    }
+  ]
+}
