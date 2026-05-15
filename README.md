@@ -1,12 +1,12 @@
 # Claude Skills
 
-Custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills used at Blackshield.
+Custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills used at Blackshield, packaged as plugins.
 
-## Skills
+## Plugins
 
 ### Blueprint
 
-**File:** `blueprint/blueprint_skill.md`
+**Path:** `blueprint/`
 
 Comprehensive guidelines for building Go applications on the [Blueprint framework](https://github.com/oddbit-project/blueprint). Covers:
 
@@ -24,4 +24,8 @@ Comprehensive guidelines for building Go applications on the [Blueprint framewor
 
 ## Usage
 
-Place skill files under this directory and reference them from your Claude Code configuration. Skills are loaded contextually based on their trigger conditions.
+Use a plugin in any project with:
+
+```bash
+claude --plugin-dir /path/to/claude_skills/blueprint
+```
