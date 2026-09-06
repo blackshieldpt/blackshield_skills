@@ -51,10 +51,13 @@ expect_rc 2 "$here"/base-run.sh -t "t dir/check.sh" -s 'false' -- true          
 (cd "t dir" && expect_rc 0 "$here"/base-run.sh -t "t dir/check.sh" -- test -f "t dir/check.sh")
 
 # internal copy failure (a regular file at base where the test's directory must go) is 2
-git switch -q main && echo f > blk && git add blk && git commit -qm blk && git fetch -q origin main
-git switch -q fix/1 && mkdir -p blk && printf 'true\n' > blk/test.sh
-expect_rc 2 "$here"/base-run.sh -t blk/test.sh -- bash blk/test.sh
-rm -rf blk
+(
+  cd "$tmp" && mkrepo repo3 main
+  echo f > blk && git add blk && git commit -qm blk && git fetch -q origin main
+  git switch -qc fix/3 && git rm -q blk && mkdir blk && printf 'true\n' > blk/test.sh
+  expect_rc 2 "$here"/base-run.sh -t blk/test.sh -- bash blk/test.sh
+)
+cd "$tmp/repo"
 
 # origin unreachable: falls back to the fetched ref, no prompt, no hang
 git remote set-url origin /nonexistent
