@@ -11,10 +11,21 @@ and give it to the reviewer. A row with an empty column is an unverified claim.
 | claim | test file | command | setup (`-s`) | failure at base | hunk reverted | assertion that failed under mutation |
 |---|---|---|---|---|---|---|
 
+A guard from phase 3's falsification step passes at `<base>`; write "passes at base (guard)"
+in that column rather than leaving it empty, so it is not read as a reproduction that did
+not reproduce. It still needs a mutation hunk.
+
 The command column is the exact `-- <command>` given to `base-run.sh`, so the reviewer
 can repeat the run.
 
 ## Paths
+
+A test file named with `-t` must **compile at `<base>`**. A single test referencing a
+symbol the change introduces makes the whole file fail to build there, and the reproduction
+becomes a compile error rather than the issue's symptom. Keep tests that name new symbols
+in a separate file from the ones that reproduce the defect, and keep constants they need
+out of the reproduction's dependencies. A compile error is the honest base failure only
+when the claim is that the behaviour does not exist yet.
 
 `base-run.sh -t` paths are relative to the repo root, wherever the command is run from,
 and must stay inside the repo; a directory (fixtures, snapshots) is accepted and copied
@@ -59,10 +70,18 @@ A test that also passes against the pre-fix code proves nothing. Watch for:
 - "sweep" tests that grep the source; they pass trivially once the string is gone;
 - a test that asserts a known defect as intended behaviour;
 - a PR whose last chunk reintroduces the bug its first chunk fixed, with its own test
-  locking it in.
+  locking it in;
+- tests that all exercise the path the claim is about, while the defect lives on the path
+  beside it — every test of a failure path passing while the bug is on the success path;
+- a fix whose tests all use one input shape, where the defect is in a shape the author did
+  not think of;
+- a bound tested only against inputs it should reject, so nothing notices it also rejects
+  inputs it should accept.
 
-None of these are catchable by reading the test. Only the base run and the mutation
-detect them.
+The first five are not catchable by reading the test; the base run and the mutation detect
+them. The last three are not catchable by mutation either — the tests and the fix share
+the author's wrong model, so they agree with each other. Phase 3's falsification step and
+the phase 6 review are what find those.
 
 ## When a suite cannot run
 
@@ -70,3 +89,14 @@ Docker missing, wrong runtime version, a gitignored fixture absent: do not work 
 silently. Report the suite as **not run**, with the reason, in the PR body's Verification
 section and to the user. If that suite covers the changed area, the PR is not ready to
 merge.
+
+A suite that is gated behind an environment variable and skips by default is **not run**
+either, however green the output looks. Check what actually executed rather than the exit
+status: `--- SKIP` lines and a passing package are the same colour as a passing run.
+
+The same applies to **CI that cannot start**. When jobs fail without executing a step — a
+billing or quota block, a runner that is never allocated, a queue that never drains — say
+so explicitly, name the cause, and do not present the run as evidence either way. Say which
+suites ran locally instead and on how many machines, and leave the merge decision to the
+user: local verification on one machine is not the same claim as a green pipeline, and a
+PR merged that way should say so in its body.

@@ -25,6 +25,12 @@ Put this in the brief, verbatim, above the inputs:
 - the evidence table from `testing.md`;
 - the list of framework and library skills to load before reading;
 - the project rules (base-run setup, suite serialisation, conventions);
+- **the failure modes already found in this repository**, in one or two lines each,
+  carried forward from earlier issues' review rounds. Reviews are independent, so without
+  this each one rediscovers the same class of defect: a recover placed where something it
+  skips past is left inconsistent, a bound compared against a quantity that does not bound
+  it, a counter that cannot climb because the work it counts is cached. Naming the classes
+  already seen in this tree front-loads the round that would otherwise find them again;
 - the path `$S` and the values of `<base>` and `<main>`.
 
 ## Constraints on the reviewer

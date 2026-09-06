@@ -155,6 +155,32 @@ A test that passes at `<base>` means the claim is not what the issue says or the
 not exercise it; resolve that before writing the fix. If a claim cannot be made to fail,
 say so and stop.
 
+**Falsify the claim before implementing.** The tests so far assert what the issue says.
+They were derived from your own model of the defect, so they cannot find an error in that
+model: if the fix is wrong in the same direction the claim is wrong, every one of them
+still passes. Write down what would have to be true for the fix to be wrong *while the
+tests above stay green*, and add a test for each of these that applies:
+
+- **The negative.** Not only "X is rejected" but "the thing immediately next to X is still
+  accepted". A bound that over-rejects passes every test that only feeds it things it
+  should reject.
+- **Both directions of a guard.** A condition that skips work needs a test for the skip
+  and a test for the non-skip.
+- **The opposite path.** Changing an error path: test the success path. Changing a success
+  path: test the error path. A defect very often lives on the path beside the one the
+  claim is about.
+- **A second input shape.** If the change touches a type switch, a container, a parser or
+  anything that dispatches on shape, one shape is one shape.
+
+Most of these **pass at `<base>`**, and that is correct rather than a problem: they assert
+behaviour the pre-fix code already gets right and the fix must not break. Record them in the
+evidence table as guards, with the base run showing them passing, so the row is not mistaken
+for a reproduction that failed to reproduce. They still get a mutation hunk — what pins a
+guard is the part of the fix whose removal makes it fail. If one of them fails at `<base>`,
+the issue understated the defect: say so and add it to the claims.
+
+Files they add are named in a plan comment like any others.
+
 **Implement.** Read the surrounding code before assuming a pattern; first-party libraries
 are not in any model's training data. Use the repo's own builders, wrappers, helpers,
 error types and fixtures where the neighbouring code does; bypassing one needs a reason
@@ -172,6 +198,19 @@ $S/mutate.sh backup <file>        # never `git checkout -- <file>` or `git stash
 $S/mutate.sh restore <file>       # one-shot: the backup is consumed
 # run it again; confirm it passes
 ```
+
+**A mutant that does not compile is void, not a pass.** Confirm the build succeeded before
+reading the result: deleting a block routinely orphans an import or a variable, the run
+fails with a build error rather than a test failure, and a filter looking for failing tests
+reports "nothing failed". Prefer mutations that change a value over ones that delete code —
+`if cond` to `if false`, a `recover()` to something that is never non-nil, a computed bound
+to a constant.
+
+**Mutation does not check correctness.** It proves a test is coupled to a hunk, and a wrong
+fix passes it as easily as a right one — every hunk of a fix that measures the wrong
+quantity is still pinned by the tests written for that same wrong quantity. It is a check
+on the tests, not on the change; the falsification step in phase 3 and the review in phase
+6 are what check the change.
 
 If no single hunk makes the test fail, the claim is not pinned. Split the claim in a new
 plan comment, or tighten the assertion and re-run the base run for that test; a test never
@@ -198,6 +237,12 @@ These rules stop the patch-the-patch loop.
 - **Tests are frozen.** After the base run, a regression test changes only through the
   two routes in phase 4 or to fix a setup error. Never skip, mark expected-failure,
   loosen, or delete a test to make a suite pass.
+- **"Setup error" is narrow.** It means the test could not reach the code under test — a
+  missing fixture, a wrong path, a harness that never started. If the test *ran* and
+  failed, it is evidence. Before changing a fixture or an assertion, write down what was
+  wrong with the old one; if the only answer is "it made the test fail", that is a
+  finding, not a setup error. A fixture relaxed until the test passes deletes the defect
+  it was reporting.
 - **Scope lock.** Touching a file the plan did not name is a stop condition: post a plan
   comment adding it with a reason, or do not touch it.
 - **Two attempts.** Implementation (phases 3 and 4) gets two attempts; the first is the
