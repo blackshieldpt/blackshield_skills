@@ -9,8 +9,8 @@ area (`fix(web):`, `fix(drive):`, `test(retention):`, `docs:`). End with the
 ```bash
 git add -- <paths>
 git commit
-git push -u origin HEAD                 # detached worktree: git push origin HEAD:refs/heads/<branch>
-gh pr create --title "fix(web): ..." --body "$(cat <<'EOF'
+git push -u origin HEAD                 # detached HEAD: git push origin HEAD:refs/heads/<branch>
+gh pr create --title "fix(web): ..." --body "$(cat <<'EOF'   # detached HEAD: add --head <branch>
 ...
 EOF
 )"
@@ -21,7 +21,7 @@ if the repo's history shows squash merges.
 
 ## PR body
 
-Redact per phase 1 of SKILL.md; the evidence table's failure column is raw test output.
+Redact per SKILL.md Setup; the evidence table's failure column is raw test output.
 Sections, not a wall:
 
 - `Closes #<N>` on the first line, so the merge closes the issue;
@@ -38,9 +38,12 @@ Sections, not a wall:
 
 ## Merge sequence
 
-Only when asked. Each line is a step; stop at the first that fails, including the suite
-re-run, and never continue to `gh pr merge` past a failure. `<PR>` is the pull request
-number, not the issue number.
+Only when asked. Each line is a step; stop at the first that fails and never continue to
+`gh pr merge` past a failure. Two exceptions are defined: a rebase conflict confined to
+`CHANGELOG.md` is resolved by keeping both sides; any other conflict is `git rebase
+--abort` and stop. A suite failure that is pre-existing, already filed, and reproduced at
+`origin/<main>` does not block; name it in the PR. `<PR>` is the pull request number, not
+the issue number.
 
 ```bash
 git fetch origin
