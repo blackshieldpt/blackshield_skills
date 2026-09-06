@@ -10,8 +10,19 @@
     {
       "name": "blueprint",
       "description": "Guidelines for building Go applications on the Blueprint framework and GoAuth authentication library",
-      "author": { "name": "Blackshield" },
+      "author": {
+        "name": "Blackshield"
+      },
       "source": "./blueprint",
+      "category": "development"
+    },
+    {
+      "name": "coding",
+      "description": "General coding workflows: issue to merged PR with mutation-verified tests and adversarial review",
+      "author": {
+        "name": "Blackshield"
+      },
+      "source": "./coding",
       "category": "development"
     }
   ]
