@@ -100,8 +100,18 @@ directories or workspace members (`apps/api`, `web/`, `pkg/`), library or module
 and cross-cutting areas that exist as real artifacts (`ci` for pipeline files, `infra`
 for deploy/compose/images, `docs` for documentation-only). Name the component by what
 the repo calls it, not by a generic role. A label that does not exist yet is created
-with `gh label create <name> --description "<what it covers>"` and reported to the user;
-do not create more than the issue needs. Assignees and milestones: none unless project
+with `gh label create <name> --description "<what it covers>" --color <hex>` and reported to the user;
+do not create more than the issue needs. Colours are fixed so labels read the same across
+repos:
+
+| Label | Colour |
+|---|---|
+| `severity:critical` | `b60205` |
+| `severity:high` | `d93f0b` |
+| `severity:medium` | `9a6700` |
+| `severity:low` | `c2e0c6` |
+| `bug` / `enhancement` | GitHub defaults (`d73a4a` / `a2eeef`) |
+| any scope label | `0075ca` | Assignees and milestones: none unless project
 rules say otherwise.
 
 **Severity.** Grade by what happens if nobody fixes it, in a configuration that ships —
@@ -121,7 +131,7 @@ not by how hard it was to find or how alarming the code looks.
 Two things that are *not* severity: how many places the defect appears, and whether a
 test exists. Say both in the body instead.
 
-**Body.** State the defect, then prove it. Prose, no template headings, in this order:
+**Body.** State the defect, then prove it. Prose under a **bold lead-in per item** (no `#` headings), executed results as a table or fenced block, citations and test lists as bullets — readable on the GitHub page without scrolling back. In this order:
 
 1. **What is wrong**, in one sentence, with the `path:line` it lives at and the code
    quoted.
