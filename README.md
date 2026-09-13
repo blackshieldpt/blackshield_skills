@@ -37,6 +37,30 @@ General coding workflows. Currently one skill:
 Repo-specific rules for that workflow live in the target repo, not here. A ready-to-copy
 example is in `project-notes/`.
 
+### ClickHouse
+
+**Path:** `clickhouse/`
+
+Practices, tunables and gotchas for designing, querying and operating ClickHouse. `SKILL.md`
+holds the rules that matter most; eight reference files go deeper:
+
+- Sorting-key, partitioning, codec and data-type design; projections, dictionaries, schema evolution
+- Query optimization: filter order, PREWHERE, JOIN strategies, aggregate states, FINAL-heavy tables
+- Ingestion: batching, parts and merges, `TOO_MANY_PARTS`, insert deduplication, mutations, TTL, Kafka
+- Incremental and refreshable materialized views, backfills
+- Distributed tables, replication, Keeper, backup/restore, Cloud vs OSS differences
+- Diagnostics (`EXPLAIN`, `system.query_log`, profiling) and access control/quotas
+- Operations: topology, upgrades, monitoring, incident playbook
+- ~70 community-sourced pitfalls with fixes, plus a reading list
+
+Every setting name, default and version claim was checked against the ClickHouse docs
+(September 2026). Source URLs are listed in each file; `sources.md` holds the original
+Tinybird articles it was distilled from.
+
+**Triggers automatically** when writing or reviewing ClickHouse DDL/SQL, tuning ingestion
+or query latency, designing materialized views, or debugging OOM, `TOO_MANY_PARTS`,
+read-only tables or slow merges.
+
 ## Usage
 
 Install from this directory as a marketplace:
@@ -45,6 +69,7 @@ Install from this directory as a marketplace:
 /plugin marketplace add /path/to/claude_skills
 /plugin install blueprint@blackshield-skills
 /plugin install coding@blackshield-skills
+/plugin install clickhouse@blackshield-skills
 ```
 
 Or load one plugin for a single session:

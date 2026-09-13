@@ -24,6 +24,15 @@
       },
       "source": "./coding",
       "category": "development"
+    },
+    {
+      "name": "clickhouse",
+      "description": "ClickHouse practices, tunables and gotchas: schema design, query optimization, ingestion, materialized views, replication and operations",
+      "author": {
+        "name": "Blackshield"
+      },
+      "source": "./clickhouse",
+      "category": "development"
     }
   ]
 }

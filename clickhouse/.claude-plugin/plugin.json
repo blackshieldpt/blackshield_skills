@@ -1,0 +1,9 @@
+{
+  "name": "clickhouse",
+  "version": "1.0.0",
+  "description": "ClickHouse practices, tunables and gotchas: schema and sorting-key design, query optimization, ingestion, materialized views, replication, operations",
+  "author": {
+    "name": "Blackshield",
+    "email": "jpinheiro@blackshield.pt"
+  }
+}
