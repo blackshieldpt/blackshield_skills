@@ -1,364 +1,182 @@
 ---
 name: blueprint
 description: "Guidelines for building Go applications on the Blueprint framework (github.com/oddbit-project/blueprint) and GoAuth authentication library (github.com/blackshieldpt/goauth). Covers architecture, providers, HTTP API patterns, database access, authentication, testing, migrations, error handling, and style rules. Use when code imports github.com/oddbit-project/blueprint or github.com/blackshieldpt/goauth, or user mentions Blueprint framework, Blueprint provider, Blueprint container, or GoAuth. Skip when the project has no Go files or no Blueprint/GoAuth dependency."
-version: 1.1.0
+version: 1.2.0
 ---
 
-# Blueprint Application Skill
+# Blueprint
 
-Guidelines for building Go applications on the Blueprint framework (`github.com/oddbit-project/blueprint`). Covers architecture, patterns, conventions, and style rules. All patterns are proven in production.
-
----
+Conventions for Go services on `github.com/oddbit-project/blueprint`. All patterns are
+proven in production; match them.
 
 ## Reference files
 
-Load the file for the area the task touches; each is self-contained.
+Load the file for the area the task touches.
 
-| File | Sections |
+| File | Covers |
 |---|---|
-| `references/configuration-and-di.md` | Configuration; Dependency Injection |
-| `references/service-layer.md` | Service Layer |
-| `references/http-api.md` | HTTP API Layer |
-| `references/authentication.md` | Authentication & Credentials |
-| `references/errors-and-shutdown.md` | Error Handling; Graceful Shutdown |
-| `references/components.md` | Component Interfaces |
-| `references/database.md` | Database Patterns |
-| `references/rpc.md` | Inter-Service RPC |
-| `references/testing.md` | Testing |
-| `references/logging.md` | Logging |
-| `references/providers.md` | Providers |
+| `references/configuration-and-di.md` | Config struct, `Validate()`, loading, JSON format; context structs, service container, factories |
+| `references/service-layer.md` | Repository pattern, query patterns, PostgreSQL/ClickHouse records, buffered CH writer, `qb` update API, `db.Grid` |
+| `references/http-api.md` | Server setup, body limits, handler chaining, deserialization, validators, responses, errors, pagination, CSV, sessions |
+| `references/authentication.md` | GoAuth, JWT middleware, API keys, login flow, Argon2id, crypt utils, secrets, audit trail, HMAC, htpasswd |
+| `references/errors-and-shutdown.md` | Sentinel errors, nil-for-not-found, error flow; destructors, goroutine launchers |
+| `references/components.md` | Thread pool, atomic status tracking, counter stats, custom Prometheus collector, batch writer |
+| `references/database.md` | PostgreSQL migrations, schema conventions, DB initialization, `FOR UPDATE SKIP LOCKED` job queue |
+| `references/rpc.md` | MessagePack inter-service RPC |
+| `references/testing.md` | testify suites, testcontainers, fixtures |
+| `references/logging.md` | Logger creation, methods, nil-logger fallback |
+| `references/providers.md` | SMTP, S3, TLS, NATS provider setup (ClickHouse writer is in service-layer §6.4–6.5; HMAC in authentication §8.11) |
 
----
+## 1. Stack
 
-## 1. Core Technology Stack
+| Concern | Import |
+|---|---|
+| Framework | `github.com/oddbit-project/blueprint` |
+| HTTP | `github.com/gin-gonic/gin` via `github.com/oddbit-project/blueprint/provider/httpserver` |
+| PostgreSQL (pgx) | `github.com/oddbit-project/blueprint/provider/pgsql` |
+| ClickHouse | `github.com/oddbit-project/blueprint/provider/clickhouse` |
+| Kafka (franz-go) | `github.com/oddbit-project/blueprint/provider/franz` |
+| NATS / etcd / S3 / SMTP | `github.com/oddbit-project/blueprint/provider/{nats,etcd,s3,smtp}` |
+| HMAC auth | `github.com/oddbit-project/blueprint/provider/hmacprovider` |
+| SQL builder | `github.com/doug-martin/goqu/v9`; updates via `github.com/oddbit-project/blueprint/db/qb` |
+| Logging | Zerolog via `github.com/oddbit-project/blueprint/log` |
+| Auth | `github.com/blackshieldpt/goauth` (JWT + Argon2) |
+| Metrics | `github.com/prometheus/client_golang` |
+| Serialization | MessagePack `github.com/vmihailenco/msgpack/v5` (inter-service); `encoding/json` (HTTP) |
+| Validation | `github.com/go-playground/validator/v10` through Gin `binding:` tags |
+| UUIDs | `github.com/google/uuid` |
+| Tests | `github.com/stretchr/testify` suites + `github.com/testcontainers/testcontainers-go` |
 
-| Concern | Technology | Import Path |
+## 2. Lifecycle: New → Build → Start
+
+Every service embeds `*blueprint.Container`.
+
+**`cmd/{service}/main.go`** — flags into a `CliArgs` struct of pointer fields:
+`ConfigFile` (`-c config/app.json`), `Migrate` (`-migrate`), `ShowVersion` (`-version`),
+`SampleConfig` (`-sample-config`); then:
+
+```go
+utils.PanicOnError(log.Configure(log.NewDefaultConfig()))
+logger := log.New("app")
+flag.Parse()
+// -version → print VERSION, exit 0; -sample-config → json.MarshalIndent(appservice.NewConfig()), exit 0
+app, err := appservice.NewApp(cliArgs, logger)   // err → logger.Error(err, "Initialization failed"); os.Exit(-1)
+app.Start(app.Build())
+```
+
+**`NewApp`** — `provider.NewJsonProvider(*args.ConfigFile)` → `&App{Container:
+blueprint.NewContainer(cfg), args, logger}`.
+
+**`Build() *core.AppContext`** — every failure goes through `m.AbortFatal(err)`:
+
+```go
+cfg := NewConfig()
+m.AbortFatal(m.Config.Get(cfg)); m.AbortFatal(cfg.Validate())
+ctx := &core.AppContext{}
+ctx.Logger   = factories.BuildLog(m.Container, m.logger)
+ctx.Metadata = factories.BuildMetadataClient(m.Container, cfg.Metadata, ctx.Logger)
+ctx.PgDb     = m.initDb(cfg.Db)
+if m.args.Migrate != nil && *m.args.Migrate { m.AbortFatal(migrations.PgMigrate(m.Context, ctx.PgDb)) }
+ctx.Svc, err = core.NewServiceContext(m.Context, ctx); m.AbortFatal(err)
+m.initWebApi(cfg.WebApi, ctx)
+return ctx
+```
+
+Order: config → cross-cutting factories → databases → migrations (flag-gated) → services →
+HTTP. Destructors are registered as each dependency is built (see errors-and-shutdown).
+
+**`Start(ctx)`** — `m.Run(launchers...)` blocks until the shutdown signal; each launcher is
+`func(app interface{}) error` that starts a goroutine and returns nil. The API launcher
+logs `ctx.ApiServer.Addr`, runs `ctx.ApiServer.Start()`, and on error calls
+`m.Terminate(err)`.
+
+## 3. Project structure
+
+```
+cmd/{service}/main.go        flags + bootstrap
+{service}/
+  application.go             Build() + Start()
+  config.go                  Config + NewConfig() + Validate()
+  api/  server.go errors.go common.go {domain}.go      ApiServer, routes, error helpers, ValidationError, handlers
+  core/ context.go           AppContext + ServiceContext (DI roots)
+  service/ {domain}.go {domain}_test.go common.go fixtures_test.go   logic, suites, shared constants, factories
+  data/ {concern}.go         query/DDL layer
+  auth/ hasher.go            password hashing
+  migrations/ pgsql.go pgsql/*.sql   runner (embed) + SQL files
+pkg/                         shared across services
+  entity/ {domain}.go constants.go errors.go   *Record/*Info models, Tbl* names, Err* sentinels
+  interfaces/ interface.go   Runnable, Writer, RunnableWriter
+  factories/ log.go metadata.go prometheus.go   BuildLog, BuildMetadataClient, BuildPrometheus
+  rpc/ message.go            MessagePack envelope
+  metadata/ provider.go      etcd metadata
+  utils/  types/             helpers; nullable_time.go etc.
+config/ {service}.json  dev/   JSON templates; dev-environment configs
+internal/testutil/ database.go context.go fixtures.go   testcontainers, test contexts, factories
+benchmark/                   load generators / perf tests
+```
+
+One file per domain in `api/` and `service/`; shared code in `pkg/`, service-specific
+code in the service package; `internal/` is test infrastructure only.
+
+## 4. Naming
+
+Files: one concern, lowercase (`product_category.go`); tests in the same package
+(`product_test.go`); `config.go` and `application.go` per service package.
+
+| Kind | Convention | Example |
 |---|---|---|
-| Base Framework | Blueprint | `github.com/oddbit-project/blueprint` |
-| HTTP | Gin | `github.com/gin-gonic/gin` |
-| HTTP Server | Blueprint httpserver | `github.com/oddbit-project/blueprint/provider/httpserver` |
-| PostgreSQL | Blueprint pgsql (pgx) | `github.com/oddbit-project/blueprint/provider/pgsql` |
-| ClickHouse | Blueprint clickhouse | `github.com/oddbit-project/blueprint/provider/clickhouse` |
-| Kafka | Blueprint franz (franz-go) | `github.com/oddbit-project/blueprint/provider/franz` |
-| NATS | Blueprint nats | `github.com/oddbit-project/blueprint/provider/nats` |
-| etcd | Blueprint etcd | `github.com/oddbit-project/blueprint/provider/etcd` |
-| S3 Storage | Blueprint s3 | `github.com/oddbit-project/blueprint/provider/s3` |
-| SMTP | Blueprint smtp | `github.com/oddbit-project/blueprint/provider/smtp` |
-| HMAC Auth | Blueprint hmacprovider | `github.com/oddbit-project/blueprint/provider/hmacprovider` |
-| SQL Builder | GOQU | `github.com/doug-martin/goqu/v9` |
-| Query Builder | Blueprint qb | `github.com/oddbit-project/blueprint/db/qb` |
-| Logging | Zerolog (via Blueprint) | `github.com/oddbit-project/blueprint/log` |
-| Auth | GoAuth (JWT + Argon2) | `github.com/blackshieldpt/goauth` |
-| Metrics | Prometheus | `github.com/prometheus/client_golang` |
-| Serialization | MessagePack (inter-service) | `github.com/vmihailenco/msgpack/v5` |
-| Serialization | JSON (HTTP API) | `encoding/json` (stdlib) |
-| Validation | go-playground/validator | `github.com/go-playground/validator/v10` (via Gin binding tags) |
-| UUIDs | google/uuid | `github.com/google/uuid` |
-| Testing | testify suites + testcontainers | `github.com/stretchr/testify`, `github.com/testcontainers/testcontainers-go` |
+| Package | lowercase, short | `entity`, `rpc` |
+| Interface | behaviour verb | `Runnable`, `Writer`, `Provider` |
+| Struct | noun | `ProductService`, `EventDispatcher` |
+| DB record | `*Record` | `ProductRecord` |
+| API response | `*Info` | `ProductInfo` |
+| API request | `*Params` / `*Request` | `ProductParams`, `LoginRequest` |
+| Service | noun or `*Service` | `OrderService` |
+| Constructor | `New*` | `NewProductService()` |
+| Table name | `Tbl*` | `TblProduct = "product"` |
+| Status | `{Domain}Status*` | `ProductStatusActive = 1` |
+| Error | `Err*` | `ErrNotFound`, `ErrNotUnique` |
+| CLI args | `CliArgs`, pointer fields from `flag.*` | |
 
----
+Struct tags on records, e.g. `` `json:"categoryId" db:"fk_category"` ``:
 
-## 2. Application Lifecycle
+| Tag | Meaning |
+|---|---|
+| `json` | camelCase, HTTP API |
+| `db` | snake_case, PostgreSQL column |
+| `binding` | Gin validation, `"required,min=3,max=128"` |
+| `goqu` | `"skipinsert,skipupdate"` on generated PKs |
+| `auto` | `"true"` = auto-updated by `qb` UpdateBuilder (service-layer §6.6) |
+| `grid` | `"sort,search,filter"` for `db.Grid` (service-layer §6.7) |
+| `ch` | ClickHouse column |
 
-Every service embeds `*blueprint.Container` and follows a three-phase lifecycle: **New -> Build -> Start**.
+## 5. Style rules
 
-### 2.1 Entry Point (`cmd/{service}/main.go`)
+1. No unnecessary abstractions — three similar lines beat a premature helper.
+2. Comments only for a non-obvious *why*.
+3. Return `error` up; sentinel errors with `errors.Is()`.
+4. Pass `context.Context` through constructors and methods.
+5. Accept a nil logger; default to `log.New("svcName")`.
+6. Pointer receivers on service and record types.
+7. `make([]*T, 0)` for empty return slices.
+8. Validate at boundaries (`binding:` tags, config `Validate()`); trust internal code.
+9. No feature flags, no backwards-compat shims.
+10. Imports in two groups: stdlib + project, then third-party `github.com/`.
 
-```go
-package main
+## 6. Checklists
 
-import (
-    "encoding/json"
-    "flag"
-    "fmt"
-    "os"
+**New endpoint** — request/response structs with `json:` + `binding:` → route in
+`server.go` (public/protected, admin/common section) → handler method on `*ApiServer`,
+`IsAdmin()` guard for admin → `httpserver.ValidateJSON(g, &req)` for bodies → call
+`s.svc.*` → `response.Success(g, data)` or a domain error helper mapping sentinels to HTTP.
 
-    "github.com/oddbit-project/blueprint/log"
-    "github.com/oddbit-project/blueprint/utils"
-    "myapp/appservice"
-)
+**New service** — `service/{domain}.go` struct with `db.Repository` fields + `*log.Logger`;
+`NewXxxService(ctx context.Context, conn *db.SqlClient, logger *log.Logger)`; register
+in `ServiceContext` / `NewServiceContext()`; records in `pkg/entity/{domain}.go` with
+`json`/`db`/`goqu` tags; sentinels as `utils.Error()` constants; testify + testcontainers
+integration tests.
 
-var cliArgs = &appservice.CliArgs{
-    ConfigFile:   flag.String("c", "config/app.json", "Config file"),
-    Migrate:      flag.Bool("migrate", false, "Migrate database to latest version"),
-    ShowVersion:  flag.Bool("version", false, "Show version"),
-    SampleConfig: flag.Bool("sample-config", false, "Show default config"),
-}
-
-func main() {
-    utils.PanicOnError(log.Configure(log.NewDefaultConfig()))
-    logger := log.New("app")
-    flag.Parse()
-
-    if *cliArgs.ShowVersion {
-        fmt.Printf("Version: %s\n", VERSION)
-        os.Exit(0)
-    }
-
-    if *cliArgs.SampleConfig {
-        cfg := appservice.NewConfig()
-        output, _ := json.MarshalIndent(cfg, "", "  ")
-        fmt.Println(string(output))
-        os.Exit(0)
-    }
-
-    app, err := appservice.NewApp(cliArgs, logger)
-    if err != nil {
-        logger.Error(err, "Initialization failed")
-        os.Exit(-1)
-    }
-
-    app.Start(app.Build())
-}
-```
-
-### 2.2 Application Struct
-
-```go
-type CliArgs struct {
-    ConfigFile   *string
-    Migrate      *bool
-    ShowVersion  *bool
-    SampleConfig *bool
-}
-
-type App struct {
-    *blueprint.Container
-    logger *log.Logger
-    args   *CliArgs
-}
-
-func NewApp(args *CliArgs, logger *log.Logger) (*App, error) {
-    cfg, err := provider.NewJsonProvider(*args.ConfigFile)
-    if err != nil {
-        return nil, err
-    }
-    return &App{
-        Container: blueprint.NewContainer(cfg),
-        args:      args,
-        logger:    logger,
-    }, nil
-}
-```
-
-### 2.3 Build Phase
-
-`Build()` initializes all dependencies, runs migrations, wires services, and registers destructors. Use `m.AbortFatal(err)` for any error that should prevent startup.
-
-```go
-func (m *App) Build() *core.AppContext {
-    cfg := NewConfig()
-    m.AbortFatal(m.Config.Get(cfg))
-    m.AbortFatal(cfg.Validate())
-
-    ctx := &core.AppContext{}
-
-    // Initialize cross-cutting concerns via factories
-    ctx.Logger = factories.BuildLog(m.Container, m.logger)
-    ctx.Metadata = factories.BuildMetadataClient(m.Container, cfg.Metadata, ctx.Logger)
-
-    // Initialize database
-    ctx.PgDb = m.initDb(cfg.Db)
-
-    // Run migrations if requested
-    if m.args.Migrate != nil && *m.args.Migrate {
-        m.AbortFatal(migrations.PgMigrate(m.Context, ctx.PgDb))
-    }
-
-    // Wire services
-    var err error
-    ctx.Svc, err = core.NewServiceContext(m.Context, ctx)
-    m.AbortFatal(err)
-
-    // Initialize HTTP API
-    m.initWebApi(cfg.WebApi, ctx)
-
-    return ctx
-}
-```
-
-### 2.4 Start Phase
-
-`Start()` launches the event loop. `m.Run(...)` accepts goroutine launchers and blocks until shutdown signal.
-
-```go
-func (m *App) Start(ctx *core.AppContext) {
-    m.Run(
-        func(app interface{}) error {
-            go func() {
-                m.logger.Infof("API endpoint: %s", ctx.ApiServer.Addr)
-                if err := ctx.ApiServer.Start(); err != nil {
-                    m.Terminate(err)
-                }
-            }()
-            return nil
-        },
-    )
-}
-```
-
----
-
-## 3. Project Structure
-
-```
-myapp/
-  cmd/{service}/main.go          # entry points (flag parsing + bootstrap)
-  {service}/
-    application.go               # Build() + Start() lifecycle
-    config.go                    # Config struct + NewConfig() + Validate()
-    api/
-      server.go                  # ApiServer struct + route registration
-      errors.go                  # domain-specific HTTP error helpers
-      common.go                  # shared helpers (ValidationError)
-      {domain}.go                # handler methods grouped by domain
-    core/
-      context.go                 # AppContext + ServiceContext (DI roots)
-    service/
-      {domain}.go                # business logic (one file per domain)
-      {domain}_test.go           # integration tests (testify suites)
-      common.go                  # shared service constants
-      fixtures_test.go           # test data factories
-    data/
-      {concern}.go               # database query/DDL layer
-    auth/
-      hasher.go                  # password hashing
-    migrations/
-      pgsql.go                   # migration runner (embed)
-      pgsql/*.sql                # SQL migration files
-  pkg/                           # shared library code (cross-service)
-    entity/
-      {domain}.go                # domain models (*Record, *Info structs)
-      constants.go               # shared constants, table names
-      errors.go                  # sentinel error constants
-    interfaces/
-      interface.go               # Runnable, Writer, RunnableWriter
-    factories/
-      log.go                     # BuildLog factory
-      metadata.go                # BuildMetadataClient factory
-      prometheus.go              # BuildPrometheus factory
-    rpc/
-      message.go                 # MessagePack envelope for inter-service RPC
-    metadata/
-      provider.go                # etcd metadata interface + implementation
-    utils/
-      strings.go, slices.go, ... # small helpers
-    types/
-      nullable_time.go, ...      # custom DB/serialization types
-  config/
-    {service}.json               # JSON config templates
-    dev/                         # development environment configs
-  internal/testutil/
-    database.go                  # testcontainers setup
-    context.go                   # test context builders
-    fixtures.go                  # test data factories
-  benchmark/                     # load generators / perf tests
-```
-
-Key conventions:
-- `application.go` + `config.go` in each service package
-- One file per domain concern in `api/` and `service/`
-- Shared code in `pkg/`, service-specific code in the service package
-- `internal/` for test infrastructure only
-
----
-
-## 16. Naming Conventions
-
-### 16.1 Files
-
-- One concern per file, lowercase names: `product.go`, `product_category.go`
-- Tests in same package: `product_test.go`
-- Config: `config.go` per service package
-- Lifecycle: `application.go` per service package
-
-### 16.2 Go Identifiers
-
-| Kind | Convention | Examples |
-|---|---|---|
-| Packages | lowercase, short | `entity`, `backend`, `rpc` |
-| Interfaces | CamelCase, behavior-verb | `Runnable`, `Writer`, `Provider` |
-| Structs | CamelCase, noun | `ProductService`, `EventDispatcher` |
-| DB-mapped records | `*Record` suffix | `ProductRecord`, `OrderRecord` |
-| API response DTOs | `*Info` suffix | `ProductInfo`, `UserInfo` |
-| API request structs | `*Params` or `*Request` suffix | `ProductParams`, `LoginRequest` |
-| Services | domain noun or `*Service` | `UserService`, `OrderService` |
-| Constructors | `New*` prefix | `NewProductService()`, `NewConfig()` |
-| Table name constants | `Tbl*` prefix | `TblProduct = "product"` |
-| Status constants | `{Domain}Status*` | `ProductStatusActive = 1` |
-| Error constants | `Err*` prefix | `ErrNotFound`, `ErrNotUnique` |
-| CLI args | `CliArgs` struct | Pointer fields with `flag.*` |
-
-### 16.3 Struct Tags
-
-```go
-type ProductRecord struct {
-    Id         uuid.UUID  `json:"id" db:"id_product"`
-    CreatedAt  time.Time  `json:"createdAt" db:"created_at"`
-    UpdatedAt  time.Time  `json:"updatedAt" db:"updated_at"`
-    Status     int        `json:"status" db:"status"`
-    CategoryId uuid.UUID  `json:"categoryId" db:"fk_category"`
-    Name       string     `json:"name" db:"name"`
-    Attributes Attributes `json:"attributes" db:"attributes"`
-}
-```
-
-Tag conventions:
-- `json:` — camelCase for HTTP API
-- `db:` — snake_case matching PostgreSQL column names
-- `binding:` — Gin validation rules (`"required,min=3,max=128"`)
-- `goqu:` — insert/update control (`"skipinsert,skipupdate"` for auto-generated PKs)
-- `auto:` — marks auto-updated fields for qb UpdateBuilder (`"true"` — see `references/service-layer.md` §6.6)
-- `grid:` — db.Grid capabilities (`"sort,search,filter"` — see `references/service-layer.md` §6.7)
-- `ch:` — ClickHouse column mapping
-
----
-
-## 17. Code Style Rules
-
-1. **No unnecessary abstractions.** Three similar lines beat a premature helper.
-2. **Minimal comments.** Only when the WHY is non-obvious. No "what" comments.
-3. **Error propagation.** Return `error` up. Use sentinel errors with `errors.Is()`.
-4. **Context propagation.** Pass `context.Context` through constructors and method signatures.
-5. **Nil logger fallback.** Accept nil, create default with `log.New("svcName")`.
-6. **Pointer receivers.** All methods on service and record types.
-7. **Slice initialization.** `make([]*Type, 0)` for empty slices in return values.
-8. **Validation at boundaries.** Binding tags on request structs, `Validate()` on config structs. Trust internal code.
-9. **No feature flags or backwards-compat shims.** Just change the code.
-10. **Import grouping.** Two groups separated by a blank line: (stdlib + project imports mixed) then (third-party `github.com/` imports).
-
----
-
-## 18. Checklists
-
-### Adding a New API Endpoint
-
-1. Define request/response structs with `json:` + `binding:` tags.
-2. Add the route in `server.go` (correct section: public vs. protected, admin vs. common).
-3. Implement handler as a method on `*ApiServer`.
-4. For admin endpoints, add `IsAdmin()` guard.
-5. Use `httpserver.ValidateJSON(g, &req)` for POST/PUT body parsing.
-6. Call the service method via `s.svc.*`.
-7. Return `response.Success(g, data)` or the appropriate error helper.
-8. Add or reuse a domain error helper to map sentinel errors to HTTP responses.
-
-### Adding a New Service
-
-1. Create `service/{domain}.go` with a struct holding `db.Repository` fields and `*log.Logger`.
-2. Constructor: `NewXxxService(ctx context.Context, conn *db.SqlClient, logger *log.Logger)`.
-3. Register in `ServiceContext` and wire in `NewServiceContext()`.
-4. Define entity records in `pkg/entity/{domain}.go` with `json`, `db`, and `goqu` struct tags.
-5. Define sentinel errors as `utils.Error()` constants.
-6. Write integration tests using testify suites with testcontainers.
-
-### Adding a New Background Service
-
-1. Embed `*blueprint.Container` in the application struct.
-2. Follow the `New() -> Build() -> Start()` lifecycle.
-3. Load config with `provider.NewJsonProvider()` + `Config` struct with `Validate()`.
-4. Use factories for cross-cutting concerns (logging, metrics, metadata).
-5. Register destructors in reverse shutdown order (LIFO).
-6. Implement `Runnable` interface for background components.
-7. Use `m.Run(...)` with goroutine launchers for the main event loop.
-
----
+**New background service** — embed `*blueprint.Container`; New → Build → Start; config via
+`provider.NewJsonProvider()` + `Validate()`; factories for logging/metrics/metadata;
+destructors registered in reverse shutdown order (LIFO); components implement `Runnable`;
+`m.Run(...)` launchers for the event loop.
