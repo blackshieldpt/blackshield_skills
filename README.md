@@ -20,6 +20,10 @@ Comprehensive guidelines for building Go applications on the [Blueprint framewor
 - Migration patterns
 - Error handling and logging with Zerolog
 
+`SKILL.md` carries the stack, lifecycle, project structure and style rules; the
+per-area guides (configuration, service layer, HTTP, auth, errors, components, database,
+RPC, testing, logging, providers) live under `references/` and are loaded on demand.
+
 **Triggers automatically** when code imports `github.com/oddbit-project/blueprint` or `github.com/blackshieldpt/goauth`, or when the user mentions Blueprint/GoAuth.
 
 ### Coding
@@ -40,6 +44,15 @@ General coding workflows:
   consequence; a fresh-context pass tries to disprove each claim before the user sees the
   draft; filed with `gh` only after confirmation. Triggers on "open/file/create an issue",
   "report this bug", "write this up as an issue".
+- `review`: read-only review of a branch, PR, range, or paths in the `improve` style —
+  light recon and stack-skill loading, audit across correctness/security/tests/perf/
+  debt/deps/docs, every finding opened at the cited line, HIGH and MEDIUM findings sent
+  to fresh-context refuters (REFUTED / OVERSTATED / CONFIRMED), then a ranked table
+  split into introduced vs pre-existing, a tests-as-claims section, "considered and
+  rejected", "not reviewed", and an APPROVE / REVISE / BLOCK verdict. Never edits code;
+  `--comment` posts the report to the PR. Triggers on "review my
+  changes", "review PR N", "review the branch", "code review of the diff". Deeper than the
+  built-in `/code-review`; invoke explicitly as `/coding:review` when both are installed.
 
 Repo-specific rules for these workflows (test commands, scope-label vocabulary, house-style
 examples) live in the target repo, not here. A ready-to-copy example is in `project-notes/`.

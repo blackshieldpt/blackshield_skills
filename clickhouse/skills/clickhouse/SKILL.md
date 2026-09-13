@@ -1,6 +1,6 @@
 ---
 name: clickhouse
-description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse. Covers MergeTree schema and sorting-key design, partitioning, data types (JSON, Variant, Dynamic, UUID, Decimal, LowCardinality) and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, GROUP BY, aggregate states), EXPLAIN and system.query_log diagnostics, ingestion and batching, insert deduplication, incremental and refreshable materialized views and backfills, merges and 'too many parts', mutations and lightweight DELETE/UPDATE, Distributed tables and sharding, replication and Keeper, backup/restore, access control and quotas, Cloud vs OSS differences, and community-sourced pitfalls. Use when writing or reviewing ClickHouse DDL/SQL, tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations or slow merges. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
+description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse. Covers MergeTree schema and sorting-key design, partitioning, data types (JSON, Variant, Dynamic, UUID, Decimal, LowCardinality) and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, GROUP BY, aggregate states), EXPLAIN and system.query_log diagnostics, ingestion and batching, insert deduplication, incremental and refreshable materialized views and backfills, merges and 'too many parts', mutations and lightweight DELETE/UPDATE, Distributed tables and sharding, replication and Keeper, backup/restore, access control and quotas, Cloud vs OSS differences, and community-sourced pitfalls. Use when writing ClickHouse DDL/SQL, judging ClickHouse SQL for correctness or performance (including when a code review touches ClickHouse), tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations or slow merges. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
 version: 1.0.0
 ---
 
@@ -22,6 +22,14 @@ Reference files, load when the task goes deep:
 | `references/community-gotchas.md` | Symptom-first pitfall tables from the ClickHouse blog, Altinity KB, PostHog, Cloudflare; tutorial links |
 
 ---
+
+## 0. Live servers
+
+Against a running ClickHouse, run `SELECT` / `SHOW` / `EXPLAIN` / `DESCRIBE` freely.
+Anything else — `ALTER`, `OPTIMIZE`, `KILL`, `DROP`/`DETACH`/`ATTACH`, `SYSTEM ...`,
+`INSERT`/`DELETE`/`UPDATE`, settings changes — print the exact statement and the
+expected effect and wait for an explicit yes before executing. The recovery commands in
+this skill are what to propose, not what to run unasked.
 
 ## 1. Non-negotiables
 

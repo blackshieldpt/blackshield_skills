@@ -36,7 +36,11 @@ GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes"
   git -C "$root" fetch -q origin "$main" 2>/dev/null \
   || echo "base-run.sh: origin unreachable, using last fetched origin/$main" >&2
 base=$(git -C "$root" merge-base "origin/$main" HEAD) || die "cannot find merge-base with origin/$main"
-git -C "$root" worktree prune
+# drop only this script's own stale worktrees; never a general prune (other agents pin
+# worktrees by name)
+git -C "$root" worktree list --porcelain | awk '/^worktree .*\/base-run\./{print $2}' | while read -r w; do
+  [ -d "$w" ] || git -C "$root" worktree remove --force "$w" >/dev/null 2>&1 || true
+done
 wt=$(mktemp -d "${TMPDIR:-/tmp}/base-run.XXXXXX") || die "mktemp failed"
 cleanup() { git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || true; rm -rf "$wt"; }
 trap cleanup EXIT

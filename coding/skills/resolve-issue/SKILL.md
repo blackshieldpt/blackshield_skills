@@ -1,7 +1,7 @@
 ---
 name: resolve-issue
-description: This skill should be used when the user asks to "fix issue #N", "resolve issue #N", "close issue #N", "implement #N", "fix this bug", "open a PR for this change", or "land this change" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh.
-version: 0.4.0
+description: "This skill should be used when the user asks to \"fix issue N\", \"resolve issue N\", \"close issue N\", \"implement N\", or \"land this change\" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh. Not for ad-hoc fixes with no issue and no request to land them; for those, work normally."
+version: 0.5.0
 argument-hint: [issue-number | description]
 ---
 
@@ -38,11 +38,13 @@ data, or paths that reveal them. Replace with `<redacted>` and say what kind of 
 was. Check quoted code and raw output line by line. Subagent output is checked before it
 is posted.
 
-**Scope of the request.** "File an issue" ends after phase 1. "Close issue #N" without a
+**Scope of the request.** "File an issue" ends after phase 1. "Close issue N" without a
 change (won't fix, duplicate, already fixed) is `gh issue close <N> --comment "..."` and
-ends there. "Fix", "resolve", "implement", or "open a PR" authorises filing the issue,
-filing separate issues for pre-existing defects found on the way, and opening the PR; the
-PR body carries `Closes #<N>`. Merging needs an explicit ask. Ask once before going beyond
+ends there, after the close comment has been shown and the user has said yes. "Fix",
+"resolve", "implement", or "open a PR" authorises *drafting* the issue, drafting separate
+issues for pre-existing defects found on the way, and opening the PR; every
+`gh issue create` still shows title, labels and body and waits for an explicit yes
+(the `file-issue` rule). The PR body carries `Closes #<N>`. Merging needs an explicit ask. Ask once before going beyond
 that. If `gh` is missing, unauthenticated, or the remote is not GitHub, stop and say so.
 
 **Re-entry.** If the branch exists: `git switch <branch>`, skip phase 1 and the branch
@@ -96,7 +98,8 @@ EOF
 
 **Labels:** kind (`bug` / `enhancement`), scope (the repo's component labels), severity
 (`severity:<level>`) — one each, scope may be two when the work truly spans components.
-Pick from `gh label list`; never invent one.
+Pick from `gh label list`; a missing label is created only after the user's yes, per
+`file-issue`.
 
 **Body:** prose, not a template, in this order: what is wrong with `path:line` and the code
 quoted; the path that reaches it, traced to a caller a deployment runs; what it costs and
@@ -271,9 +274,11 @@ it. If the repo keeps no changelog, say so in the PR body.
 
 ## 6. Adversarial review
 
-A confirmatory read of one's own work is not a gate. First run the repo's read-only
-review skills (security audit, code review without `--fix`); their findings enter round
-one. Then dispatch a fresh-context subagent (`Agent`, `subagent_type: general-purpose`,
+A confirmatory read of one's own work is not a gate. First run the read-only review
+skills, and only these: `/coding:review quick` (this plugin's review skill) and, if
+present, the built-in `/code-review low` and `/security-review` — never with `--fix`,
+`--comment`, `--post`, or `ultra`. These skills dispatch their own subagents; that is
+the one exemption from the no-subagent rule in Setup. Their findings enter round one. Then dispatch a fresh-context subagent (`Agent`, `subagent_type: general-purpose`,
 not a `fork`, no `model` override) with the brief, inputs, constraints and round rules in
 `references/review.md`.
 

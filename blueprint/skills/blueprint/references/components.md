@@ -1,0 +1,360 @@
+# Component Interfaces
+
+Part of the Blueprint skill. Section numbers match the original guide.
+
+## 11. Component Interfaces
+
+```go
+// pkg/interfaces/interface.go
+
+type Runnable interface {
+    Start(ctx context.Context) error
+    Stop(ctx context.Context) error
+}
+
+type Writer interface {
+    Write(context.Context, []byte) error
+}
+
+type RunnableWriter interface {
+    Runnable
+    Writer
+}
+```
+
+- **Runnable**: any long-lived background component (consumer, worker pool, status updater).
+- **Writer**: any data sink (Kafka producer, WAL, batch writer).
+- **RunnableWriter**: a data sink that also has lifecycle (start/stop).
+
+### 11.1 Thread Pool
+
+Blueprint provides `threadpool.ThreadPool` — a channel-based worker pool with panic recovery per worker and multiple dispatch strategies.
+
+**Core types:**
+
+```go
+import "github.com/oddbit-project/blueprint/threadpool"
+
+// Job interface — implement for custom job types
+type Job interface {
+    Run(ctx context.Context)
+}
+
+// FuncRunner — adapter for plain functions
+job := threadpool.FuncRunner(func(ctx context.Context) {
+    // work here
+})
+```
+
+**Direct usage:**
+
+```go
+pool, err := threadpool.NewThreadPool(8, 1000, threadpool.WithLogger(logger))
+pool.Start(ctx)
+
+// Dispatch variants
+pool.Dispatch(job)                                      // blocking if queue full
+pool.TryDispatch(job)                                   // non-blocking, returns false if full
+pool.DispatchWithTimeout(job, 100*time.Millisecond)     // returns false on timeout
+pool.DispatchWithContext(ctx, job)                       // returns error on context cancellation
+
+// Introspection
+pool.GetQueueLen()       // pending jobs
+pool.GetQueueCapacity()  // max queue size
+pool.GetWorkerCount()    // active workers
+pool.GetRequestCount()   // total jobs processed
+
+pool.Stop()  // blocking, waits for all workers to finish
+```
+
+**Application wrapper** — wrap `ThreadPool` with a config struct and a `WorkerFunc` type for cleaner service integration:
+
+```go
+type Config struct {
+    Workers   int `json:"workers"`
+    QueueSize int `json:"queueSize"`
+}
+
+type WorkerPool struct {
+    pool   *threadpool.ThreadPool
+    logger *log.Logger
+}
+
+type WorkerFunc func(ctx context.Context)
+
+func NewConfig() *Config {
+    return &Config{
+        Workers:   runtime.NumCPU(),
+        QueueSize: 1000,
+    }
+}
+
+func NewWorkerPool(cfg *Config, logger *log.Logger) (*WorkerPool, error) {
+    pool, err := threadpool.NewThreadPool(cfg.Workers, cfg.QueueSize, threadpool.WithLogger(logger))
+    if err != nil {
+        return nil, err
+    }
+    return &WorkerPool{pool: pool, logger: logger}, nil
+}
+
+func (p *WorkerPool) Start(ctx context.Context) error {
+    return p.pool.Start(ctx)
+}
+
+func (p *WorkerPool) Stop(ctx context.Context) error {
+    return p.pool.Stop()
+}
+
+func (p *WorkerPool) Queue(ctx context.Context, fn WorkerFunc) error {
+    return p.pool.DispatchWithContext(ctx, threadpool.FuncRunner(fn))
+}
+```
+
+**Factory for Blueprint lifecycle** — validate config, start pool, register destructor:
+
+```go
+func WorkerFactory(a *blueprint.Container, cfg *worker.Config, logger *log.Logger) *worker.WorkerPool {
+    a.AbortFatal(cfg.Validate())
+    proc, err := worker.NewWorkerPool(cfg, logger)
+    a.AbortFatal(err)
+    a.AbortFatal(proc.Start(a.Context))
+    blueprint.RegisterDestructor(func() error {
+        proc.Stop(a.Context)
+        return nil
+    })
+    return proc
+}
+```
+
+**Config example:**
+
+```json
+{
+  "workerPool": {
+    "workers": 12,
+    "queueSize": 1000
+  }
+}
+```
+
+### 11.2 Atomic Status Tracking
+
+Use `atomic.Int32` with `CompareAndSwap()` for safe state transitions in background components. Define status constants and guard Start/Stop against concurrent or duplicate calls:
+
+```go
+const (
+    statusStopped  int32 = 0
+    statusRunning  int32 = 1
+    statusStopping int32 = 2
+)
+
+type Worker struct {
+    status atomic.Int32
+    wg     sync.WaitGroup
+    ctx    context.Context
+    cancel context.CancelFunc
+}
+
+func (w *Worker) Start(ctx context.Context) error {
+    if !w.status.CompareAndSwap(statusStopped, statusRunning) {
+        return ErrAlreadyStarted
+    }
+    w.ctx, w.cancel = context.WithCancel(ctx)
+    w.wg.Add(1)
+    go w.run()
+    return nil
+}
+
+func (w *Worker) Stop(ctx context.Context) error {
+    if !w.status.CompareAndSwap(statusRunning, statusStopping) {
+        return ErrNotRunning
+    }
+    w.cancel()
+    w.wg.Wait()
+    w.status.Store(statusStopped)
+    return nil
+}
+
+func (w *Worker) IsRunning() bool {
+    return w.status.Load() == statusRunning
+}
+```
+
+Use `atomic.Bool` to prevent concurrent execution of the same task:
+
+```go
+type Task struct {
+    fn      TaskFn
+    running atomic.Bool
+}
+
+if task.running.CompareAndSwap(false, true) {
+    go func() {
+        defer task.running.Store(false)
+        task.fn(ctx)
+    }()
+}
+```
+
+Use `atomic.Int32` to track in-flight work (e.g. queued tasks):
+
+```go
+type TaskRunner struct {
+    runningTasks atomic.Int32
+}
+
+func (t *TaskRunner) Queue(ctx context.Context, fn WorkerFunc) error {
+    t.runningTasks.Add(1)
+    wrapFn := func(ctx context.Context) {
+        defer t.runningTasks.Add(-1)
+        fn(ctx)
+    }
+    return t.workerPool.Queue(ctx, wrapFn)
+}
+
+func (t *TaskRunner) RunningTasks() int {
+    return int(t.runningTasks.Load())
+}
+```
+
+### 11.3 Atomic Counter Stats
+
+Use `atomic.Uint64` structs for lock-free operational counters updated from multiple goroutines. Group related counters into a stats struct:
+
+```go
+type Stats struct {
+    NewBatchCount    atomic.Uint64
+    SPFOperations    atomic.Uint64
+    SSLOperations    atomic.Uint64
+    FlushCount       atomic.Uint64
+    SuccessCount     atomic.Uint64
+    FailedCount      atomic.Uint64
+}
+```
+
+Update from any goroutine without locks:
+
+```go
+stats.NewBatchCount.Add(1)
+stats.SSLOperations.Add(uint64(domainCount))
+```
+
+Read with `.Load()` for Prometheus collection or health endpoints.
+
+### 11.4 Custom Prometheus Collector
+
+For metrics derived from application stats objects, implement the `prometheus.Collector` interface instead of using `promauto` globals. This decouples metric definitions from the code that updates them:
+
+```go
+type Collector struct {
+    batchCount   *prometheus.Desc
+    flushCount   *prometheus.Desc
+    successCount *prometheus.Desc
+    failedCount  *prometheus.Desc
+
+    taskStats   *tasks.Stats
+    writerStats *writer.Stats
+}
+
+func NewCollector(taskStats *tasks.Stats, writerStats *writer.Stats) *Collector {
+    return &Collector{
+        batchCount: prometheus.NewDesc(
+            "app_batch_total",
+            "Total batches created",
+            nil, nil,
+        ),
+        flushCount: prometheus.NewDesc(
+            "app_flush_total",
+            "Total flush operations",
+            nil, nil,
+        ),
+        successCount: prometheus.NewDesc(
+            "app_success_total",
+            "Total successful results",
+            nil, nil,
+        ),
+        failedCount: prometheus.NewDesc(
+            "app_failed_total",
+            "Total failed results",
+            nil, nil,
+        ),
+        taskStats:   taskStats,
+        writerStats: writerStats,
+    }
+}
+
+func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
+    ch <- c.batchCount
+    ch <- c.flushCount
+    ch <- c.successCount
+    ch <- c.failedCount
+}
+
+func (c *Collector) Collect(ch chan<- prometheus.Metric) {
+    if c.taskStats != nil {
+        ch <- prometheus.MustNewConstMetric(c.batchCount, prometheus.CounterValue,
+            float64(c.taskStats.NewBatchCount.Load()))
+    }
+    if c.writerStats != nil {
+        ch <- prometheus.MustNewConstMetric(c.flushCount, prometheus.CounterValue,
+            float64(c.writerStats.FlushCount.Load()))
+        ch <- prometheus.MustNewConstMetric(c.successCount, prometheus.CounterValue,
+            float64(c.writerStats.SuccessCount.Load()))
+        ch <- prometheus.MustNewConstMetric(c.failedCount, prometheus.CounterValue,
+            float64(c.writerStats.FailedCount.Load()))
+    }
+}
+```
+
+Register during Build:
+
+```go
+collector := stats.NewCollector(taskStats, writerStats)
+prometheus.MustRegister(collector)
+```
+
+Use `promauto` (see `references/service-layer.md` §6.5) when metrics are updated directly at the call site. Use a custom collector when metrics are derived from shared stats objects or external state.
+
+### 11.5 Batch Writer
+
+Thread-safe buffered batch processor. Flushes when capacity is reached or flush interval expires.
+
+```go
+import "github.com/oddbit-project/blueprint/batchwriter"
+
+writer, err := batchwriter.NewBatchWriter(
+    ctx,
+    100,              // capacity (batch size)
+    5*time.Second,    // flush interval
+    func(records ...any) {
+        // process batch — e.g. bulk insert
+        for _, r := range records {
+            row := r.(*MyRecord)
+            // ...
+        }
+    },
+    batchwriter.WithLogger(logger),
+    batchwriter.WithClearBuffers(true),   // help GC on long-running services
+    batchwriter.WithQueueCapacity(50),    // input channel capacity (default: 10)
+)
+
+// Add records
+writer.Add(record)                        // blocks if input channel full
+ok := writer.TryAdd(record)              // non-blocking, returns false if full
+err := writer.AddWithContext(ctx, record) // context-aware
+
+// Control
+writer.FlushNow() // force immediate flush
+writer.Stop()     // graceful shutdown, flushes remaining
+
+// Metrics
+m := writer.GetMetrics()
+// m.RecordsAdded, m.RecordsProcessed, m.RecordsDropped, m.FlushCount,
+// m.LastFlushDuration, m.AvgFlushDuration
+```
+
+**Performance:** `TryAdd` is ~6x faster than `Add` (non-blocking). Use `TryAdd` for high-throughput where occasional drops are acceptable.
+
+**Error handling:** Panics in the flush function are recovered and logged. The writer continues operating after a panic.
+
+---

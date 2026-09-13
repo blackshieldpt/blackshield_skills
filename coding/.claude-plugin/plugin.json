@@ -1,6 +1,6 @@
 {
   "name": "coding",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "General coding workflows: take an issue from filing through implementation, falsification-checked and mutation-verified tests, adversarial review, PR and merge",
   "author": {
     "name": "Blackshield",
