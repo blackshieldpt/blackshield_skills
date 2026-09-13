@@ -1,7 +1,7 @@
 ---
 name: resolve-issue
 description: "This skill should be used when the user asks to \"fix issue N\", \"resolve issue N\", \"address issue N\", \"implement issue N\", \"open a PR for issue N\", or \"land this change\" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh. Not for ad-hoc fixes with no issue and no request to land them; for those, work normally. \"Close issue N\" without a fix is a one-step close, confirmed first."
-version: 0.8.0
+version: 0.9.0
 argument-hint: "[issue-number | branch | description]"
 ---
 
@@ -15,7 +15,9 @@ Follow the phases in order. Do not skip a phase because the change looks small.
 **Helper scripts.** `$S` is the `scripts/` directory under this skill's base directory,
 printed when the skill loaded. When installed as a plugin the same directory is
 `${CLAUDE_PLUGIN_ROOT}/skills/resolve-issue/scripts`. Set it once; subagents do not see
-this file, so pass the path to them explicitly.
+this file, so pass the path to them explicitly. A plugin copy loaded before a restart can
+lag the repo it was installed from; when the two differ, the text on disk under the base
+directory is authoritative.
 
 **Branches.** `<main>` is the output of `$S/default-branch.sh`; resolve it once.
 `<branch>` is the working branch (`<type>/<N>-<slug>`, created in phase 2 or found on
@@ -214,7 +216,9 @@ wrong fix also turns them green. For each test, identify the smallest hunk of th
 reverted, or altered — makes the claim false, mutate it, and confirm that test alone fails
 **on an assertion inside the test file** (`t.Errorf`, `assert.*`, a raised expectation): a
 panic, nil dereference, or build error inside the code under test is not a pinned test,
-it is a crash doing the assertion's job:
+it is a crash doing the assertion's job. When the claim itself is "does not panic", the
+test recovers (`defer recover()` → `t.Fatalf`) so the mutant fails on that line; tighten
+it that way before the base run rather than after:
 
 ```bash
 $S/mutate.sh backup <file>        # never `git checkout -- <file>` or `git stash`

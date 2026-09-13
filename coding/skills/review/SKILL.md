@@ -1,7 +1,7 @@
 ---
 name: review
 description: "This skill should be used when the user asks for a review of code changes — a diff, branch, PR, commit, or files under version control — in a git repository: \"review my changes\", \"review the branch\", \"review the diff\", \"review PR N\", \"review this PR\", \"look this over before I open a PR\", or \"review commit X\"; also invoked by resolve-issue as `review quick issue N`. It is the deep, refutation-vetted review — a read-only audit across correctness, security, tests, performance, debt, dependencies and docs, every finding opened at the cited line, HIGH and MED findings sent to fresh-context refuters, and a ranked findings table with an APPROVE / REVISE / BLOCK verdict. It never edits code. Not for reviewing documents, plans, prose, or a snippet pasted in chat; a bare \"code review\" or a quick bug pass is the built-in /code-review, the lighter tool. Requires git; gh for PR targets."
-version: 0.5.0
+version: 0.6.0
 argument-hint: "[PR number | commit | A..B | paths] [issue N] [quick | deep] [security | tests | perf] [--comment]"
 ---
 
@@ -57,7 +57,7 @@ Resolve exactly what is under review before reading anything else.
 
 | Argument | Scope |
 |---|---|
-| nothing | The current branch vs the default branch, **including uncommitted work**: `git fetch <remote> <default>`, then `git diff --name-only $(git merge-base <remote>/<default> HEAD)` (no `..HEAD`, so staged and unstaged edits count) plus `git ls-files --others --exclude-standard`; base is that merge-base. `<remote>` = the remote whose URL matches `gh repo view --json nameWithOwner` (falls back to `origin` without `gh`); `<default>` = `git symbolic-ref --short refs/remotes/<remote>/HEAD` minus the remote prefix; else whichever of `main`/`master` exists on the remote; else ask. |
+| nothing | The current branch vs the default branch, **including uncommitted work**: `git fetch <remote> <default>`, then `git diff --name-only $(git merge-base <remote>/<default> HEAD)` (no `..HEAD`, so staged and unstaged edits count) plus `git ls-files --others --exclude-standard` (untracked non-code such as tool config is reported once under "Does it do what it claims?" as unrelated to the intent, not as a finding); base is that merge-base. `<remote>` = the remote whose URL matches `gh repo view --json nameWithOwner` (falls back to `origin` without `gh`); `<default>` = `git symbolic-ref --short refs/remotes/<remote>/HEAD` minus the remote prefix; else whichever of `main`/`master` exists on the remote; else ask. |
 | `N` / PR URL | `gh pr view N --json title,body,baseRefName,headRefOid,closingIssuesReferences,commits` and `gh pr diff N`. The intent is the PR body plus the closing issues (`gh issue view`). To read code at the PR head without touching the checkout: `git fetch <remote> pull/N/head:refs/remotes/<remote>/pr/N` (`<remote>` = the one whose URL matches `gh repo view --json nameWithOwner`, usually `origin`), then `git show <headRefOid>:<path>` or a scratchpad worktree at `<headRefOid>` (Rule 1). Base for `introduced`/`pre-existing` and base-test runs: `git fetch <remote> <baseRefName>`, `git merge-base <remote>/<baseRefName> <headRefOid>`. Every citation is against `headRefOid`. If `gh pr view` cannot resolve `N`, ask whether `issue N` was meant. |
 | `X` (one commit) | `git diff X^..X` (first parent for a merge; a root commit has no `X^` — say so); citations against `X`; base is `X^` |
 | `A..B` | `git diff A..B`; citations against `B`; base is `A` |
@@ -89,16 +89,17 @@ intent.
 - **Known failure classes already found in this tree**: project rules in `CLAUDE.md` or
   a project skill, and the "Review" sections of recent merged PRs
   (`gh pr list --state merged --limit 10`, then `gh pr view N`; skip when `gh` is
-  unavailable or the remote is not GitHub). Carry them into every subagent brief so each
-  review does not rediscover the same class.
+  unavailable, the remote is not GitHub, or the first two bodies have no Review
+  section — the repo does not keep them). Carry them into every subagent brief so each
+  review does not rediscover the same class; "none recorded" is a normal answer.
 - The trust boundary for this repo (HTTP request, `argv`/config, public API args,
   upstream feed, model output) — every security finding names the boundary its input
   crosses.
 - **Symbol tooling.** For call-site sweeps and symbol lookups prefer an LSP-backed tool
   when one is available (e.g. Serena's `find_referencing_symbols`, `find_symbol`,
   `get_symbols_overview`); grep returns string matches, not references. Fall back to
-  grep when there is none, and say which was used. Pass the same instruction to every
-  subagent.
+  grep when there is none, or when the sweep is small enough to read directly at
+  `quick`, and say which was used. Pass the same instruction to every subagent.
 
 ## 3. Audit
 
@@ -136,8 +137,9 @@ Two things a diff review does that a whole-repo audit does not:
   mirrors the implementation, mocks the unit's own collaborators, or asserts nothing the
   change could break is a finding. For a bug fix, the claim "this test failed before the
   fix" is verified by **you** in a scratchpad worktree at the base commit: copy the
-  test file (and the fixtures it needs) from the reviewed tree into the worktree — it
-  does not exist at base — then run the table's command there (Rule 1; subagents never
+  test file, the fixtures it needs, and any existing test helper the change edited
+  from the reviewed tree into the worktree — they do not exist at base in that form —
+  then run the table's command there (Rule 1; subagents never
   create or set up worktrees and do not run base tests — they report the claim, you
   verify it). Or take it from evidence the PR itself shows; if neither is possible,
   report it as *not verified* rather than as a finding.
@@ -172,7 +174,7 @@ blocks landing floats to the top regardless.
 **Verdict: APPROVE | REVISE | BLOCK** — one sentence why.
 
 Loaded skills: <list or none>. Effort: <level>. Symbol tooling: <LSP tool | grep>.
-Sent to refuters: <N of M HIGH/MED>; self-vetted only: <IDs or none>.
+Sent to refuters: <N of M HIGH/MED | n/a at quick>; self-vetted only: <IDs or none>.
 Dismissal audit: <run — REVIVED: IDs or none | not run>.
 
 ### Introduced by this change
@@ -187,7 +189,8 @@ Dismissal audit: <run — REVIVED: IDs or none | not run>.
 
 ### Findings detail
 
-One block per row, in the playbook's finding format one heading level down (`####`).
+One block per row, in the playbook's finding format one heading level down (`####`);
+omit the section when the tables are empty.
 
 ### Tests
 

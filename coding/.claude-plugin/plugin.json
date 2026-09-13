@@ -1,6 +1,6 @@
 {
   "name": "coding",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "General coding workflows: take an issue from filing through implementation, falsification-checked and mutation-verified tests, adversarial review, PR and merge; issue filing with a disproof pass; standalone refutation-vetted code review",
   "author": {
     "name": "Blackshield",

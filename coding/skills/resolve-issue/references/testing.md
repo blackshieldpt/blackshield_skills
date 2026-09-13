@@ -95,7 +95,10 @@ section and to the user. If that suite covers the changed area, the PR is not re
 merge.
 
 A suite that is gated behind an environment variable and skips by default is **not run**
-either, however green the output looks. Check what actually executed rather than the exit
+either, however green the output looks. The inverse also needs saying: a target named
+`integration` or `e2e` that turns out to be the plain unit suite (no container, no
+external service reached — packages finishing in milliseconds) is reported as "same
+suite as unit; the repo has no integration tests", not as a second passing suite. Check what actually executed rather than the exit
 status: `--- SKIP` lines and a passing package are the same colour as a passing run.
 
 The same applies to **CI that cannot start**. When jobs fail without executing a step — a
