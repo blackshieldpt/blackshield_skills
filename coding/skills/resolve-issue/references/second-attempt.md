@@ -31,7 +31,9 @@ The verbatim boundary text from `review.md`, with "the reviewer" read as "this a
 
 ## Procedure
 
-SKILL.md phases 3 and 4 and the "When something fails" section, pasted with these
+SKILL.md phase 3 from "Write the regression tests before the fix" onward (the claims and
+plan are inputs, already approved — the enumerate/plan/approval paragraphs are not
+pasted), phase 4, and the "When something fails" section, pasted with these
 substitutions: every "post ... comment" becomes "return the comment text to the parent";
 "draft an issue via `file-issue`" becomes "return the issue text to the parent";
 in the "Revert, do not patch" bullet, "post a new plan comment saying what was wrong,

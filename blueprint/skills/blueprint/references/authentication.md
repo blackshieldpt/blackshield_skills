@@ -6,7 +6,7 @@ Part of the Blueprint skill. Section numbers match the original guide.
 
 ### 8.1 GoAuth Integration
 
-Initialize GoAuth with an ECDSA key pair for JWT signing loaded from `secure.KeyConfig` (§8.9). Empty keys generate ephemeral ES256 keys at startup — **dev only**: every restart invalidates all tokens and replicas cannot verify each other's.
+Initialize GoAuth with an ECDSA key pair for JWT signing loaded from `secure.KeyConfig` (§8.9). Empty keys generate ephemeral ES256 keys at startup via a small project helper `generateES256Keys() (privPEM, pubPEM string, err error)` (`ecdsa.GenerateKey(elliptic.P256(), rand.Reader)` + PEM-encode) — **dev only**: every restart invalidates all tokens and replicas cannot verify each other's. Imports: `github.com/blackshieldpt/goauth`, `github.com/blackshieldpt/goauth/store/pgstore`; the Blueprint HTTP auth helpers used in §8.3 and §8.11 come from `github.com/oddbit-project/blueprint/provider/httpserver/auth`, aliased `bpauth` because the project's own `auth/` package shares the name.
 
 ```go
 func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubPEM string) (*goauth.AuthService, *pgstore.Store, error) {
@@ -71,7 +71,7 @@ type ApiConfig struct {
 // config: {"api": {"server": {"host": "0.0.0.0", "port": 8080}, "authKeys": ["key1", "key2"]}}
 
 srv, err := httpserver.NewServer(cfg.Server, logger)   // err → return nil, err
-srv.UseAuth(auth.NewAuthTokenList("X-API-Key", cfg.AuthKeys))
+srv.UseAuth(bpauth.NewAuthTokenList("X-API-Key", cfg.AuthKeys))
 ```
 
 ### 8.4 Login / Token Flow
@@ -249,7 +249,7 @@ hash, _ := provider.SHA256Sign("client-key", strings.NewReader(data))
 keyId, valid, _ := provider.SHA256Verify(strings.NewReader(data), hash)
 
 // HTTP middleware
-hmacAuth := auth.NewHMACAuthProvider(provider)
+hmacAuth := bpauth.NewHMACAuthProvider(provider)
 router.Use(auth.AuthMiddleware(hmacAuth))
 keyId, ok := auth.GetHMACIdentity(g)                       // in handler
 keyId, timestamp, nonce, ok := auth.GetHMACDetails(g)

@@ -149,13 +149,6 @@ Caveats:
 - `EVERY`-aligned views with the same period refresh in lockstep — add `RANDOMIZE FOR` when many views share a cadence.
 - `DEPENDS ON` gates the start only: with equal `EVERY` periods the dependent waits for the dependency's refresh of that slot, nothing else is synchronized.
 
-Sources:
-- https://clickhouse.com/docs/materialized-view/refreshable-materialized-view
-- https://clickhouse.com/docs/sql-reference/statements/create/view
-- https://clickhouse.com/docs/sql-reference/statements/alter/view
-- https://clickhouse.com/docs/sql-reference/statements/system
-- https://clickhouse.com/docs/operations/system-tables/view_refreshes
-- https://clickhouse.com/docs/whats-new/changelog/2023 (23.12) and https://clickhouse.com/docs/whats-new/changelog/2024 (24.10)
 
 ## Sources
 
@@ -163,3 +156,9 @@ Sources:
 - https://www.tinybird.co/blog/what-are-materialized-views-and-why-do-they-matter-for-realtime
 - https://clickhouse.com/docs/sql-reference/statements/create/view
 - https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/uniq
+- https://clickhouse.com/docs/materialized-view/refreshable-materialized-view
+- https://clickhouse.com/docs/sql-reference/statements/create/view
+- https://clickhouse.com/docs/sql-reference/statements/alter/view
+- https://clickhouse.com/docs/sql-reference/statements/system
+- https://clickhouse.com/docs/operations/system-tables/view_refreshes
+- https://clickhouse.com/docs/whats-new/changelog/2023 (23.12) and https://clickhouse.com/docs/whats-new/changelog/2024 (24.10)

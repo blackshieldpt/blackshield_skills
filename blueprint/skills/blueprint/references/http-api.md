@@ -128,11 +128,11 @@ func (v *ValidationError) Send(g *gin.Context) { response.ValidationError(g, v.f
 Map sentinels to HTTP; one helper per domain keeps handlers clean:
 
 ```go
-var internalError = fmt.Errorf("internal error")
+var errInternalError = fmt.Errorf("internal error")
 
 func productError(g *gin.Context, err error, message ...string) {
     if errors.Is(err, entity.ErrNotFound)  { response.Http404(g); return }
-    if errors.Is(err, entity.ErrDb)        { response.Http500(g, internalError); return }
+    if errors.Is(err, entity.ErrDb)        { response.Http500(g, errInternalError); return }
     if errors.Is(err, entity.ErrNotUnique) { NewValidationError().AddField("name", "name already exists").Send(g); return }
     if len(message) > 0 { response.Http400(g, message[0]); return }
     response.Http400(g, "operation failed")

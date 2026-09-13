@@ -1,7 +1,7 @@
 ---
 name: file-issue
 description: "This skill should be used when the user asks to \"open an issue\", \"file an issue\", \"create an issue\", \"report this bug\", \"write this up as an issue\", or \"track this as an issue\" on a GitHub repository. It investigates enough to name the mechanism, checks for duplicates, writes the issue as enumerable claims in the house style the resolve-issue skill consumes, has a fresh-context pass try to disprove every claim against the code, and files it with gh after the user confirms the text. Requires gh."
-version: 0.3.0
+version: 0.4.0
 argument-hint: "[description | path:line | error text]"
 ---
 
@@ -21,7 +21,7 @@ a yes before `gh issue create`.
   the duplicate search, then set `REPO=<nameWithOwner>` and pass `-R "$REPO"` to every
   `gh issue` and `gh label` call.
 - When the input is a stack trace, match each frame to `path:line` at the commit the
-  user names, else `HEAD`; if the lines do not match, ask which version produced it
+  user names, else the caller's worktree HEAD, else `HEAD`; if the lines do not match, ask which version produced it
   before citing anything.
 - If the repo's `CLAUDE.md` or a project skill carries issue rules (house-style examples,
   label policy, required sections), they override the defaults below.
@@ -68,8 +68,13 @@ Read-only fan-out (call-site sweeps, log searches) may use `Explore` subagents w
 only other subagent is the adversarial check in §4. Never change the checkout and never
 create a branch in it. Anything that must be written or run — a throwaway test, a base
 run, a clean tree at the reported commit — happens in a **scratchpad worktree**
-(`git worktree add <scratchpad>/issue-<sha> <sha>`, set up by you, removed with
-`git worktree remove --force` when done); that is also the path the §4 subagent gets.
+(`git worktree add <scratchpad>/issue-<sha> <sha>`, `<sha>` = the commit the finding is
+against; set up by you, removed with `git worktree remove --force` when done). Read,
+cite, and run `Explore` sweeps there whenever one exists. When the caller hands one in
+(`resolve-issue` does, together with `$REPO`), use it as-is: its HEAD is the commit the
+finding is against, skip the target-repo prompt, and do not create another. Before §4,
+discard anything written there (`git -C <wt> checkout -- . && git -C <wt> clean -fd`)
+so the subagent gets a clean tree.
 
 > CONSTRAINTS: Do not modify, create, or delete any file; no formatters, installs, or
 > state-changing git. You may run an existing test or a read-only check when it settles a

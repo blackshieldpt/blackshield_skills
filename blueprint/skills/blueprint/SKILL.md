@@ -1,7 +1,7 @@
 ---
 name: blueprint
 description: "Guidelines for building Go applications on the Blueprint framework (github.com/oddbit-project/blueprint) and GoAuth authentication library (github.com/blackshieldpt/goauth). Covers architecture, providers, HTTP API patterns, database access, authentication, testing, migrations, error handling, and style rules. Use when code imports github.com/oddbit-project/blueprint or github.com/blackshieldpt/goauth, or user mentions Blueprint framework, Blueprint provider, Blueprint container, or GoAuth. Skip when the project has no Go files or no Blueprint/GoAuth dependency."
-version: 1.2.3
+version: 1.2.4
 ---
 
 # Blueprint
@@ -40,7 +40,7 @@ Load the file for the area the task touches.
 | HMAC auth | `github.com/oddbit-project/blueprint/provider/hmacprovider` |
 | SQL builder | `github.com/doug-martin/goqu/v9`; updates via `github.com/oddbit-project/blueprint/db/qb` |
 | Logging | Zerolog via `github.com/oddbit-project/blueprint/log` |
-| Auth | `github.com/blackshieldpt/goauth` (JWT + Argon2) |
+| Auth | `github.com/blackshieldpt/goauth` (JWT + Argon2); store `github.com/blackshieldpt/goauth/store/pgstore`; HTTP helpers `github.com/oddbit-project/blueprint/provider/httpserver/auth` (import as `bpauth` beside the project's own `auth/` package) |
 | Metrics | `github.com/prometheus/client_golang` |
 | Serialization | MessagePack `github.com/vmihailenco/msgpack/v5` (inter-service); `encoding/json` (HTTP) |
 | Validation | `github.com/go-playground/validator/v10` through Gin `binding:` tags |
@@ -155,7 +155,7 @@ Struct tags on records, e.g. `` `json:"categoryId" db:"fk_category"` ``:
 1. No unnecessary abstractions — three similar lines beat a premature helper.
 2. Comments only for a non-obvious *why*.
 3. Return `error` up; sentinel errors with `errors.Is()`.
-4. Pass `context.Context` through constructors and methods.
+4. Pass `context.Context` through constructors; services keep it and methods take it only when they do I/O that outlives the call.
 5. Accept a nil logger; default to `log.New("svcName")`.
 6. Pointer receivers on service and record types.
 7. `make([]*T, 0)` for empty return slices.

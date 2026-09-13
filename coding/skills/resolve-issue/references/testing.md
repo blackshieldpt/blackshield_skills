@@ -41,8 +41,9 @@ in, runs an optional setup command, then runs the test command there. It never s
 modifies the working tree, so it is safe on a branch with commits, on re-entry, and inside
 a linked worktree. The fetch never prompts; if `origin` is unreachable it uses the last
 fetched `origin/<main>`. Exit status is the command's; the script's own failures (bad
-arguments, copy or setup error) exit 2 with a `base-run.sh:` line on stderr — check for
-that line rather than the code alone, since pytest also exits 2 on interruption. Pass `-s` for any
+arguments, copy or setup error) exit 2 with a `base-run.sh: error:` line on stderr —
+check for that line rather than the code alone, since pytest also exits 2 on
+interruption (the script's informational lines use the plain `base-run.sh:` prefix). Pass `-s` for any
 gitignored setup the repo needs; project rules list them.
 
 Expected outcome: nonzero exit, and the failure text names the symptom from the issue.

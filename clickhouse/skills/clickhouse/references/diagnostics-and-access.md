@@ -233,7 +233,7 @@ With `access_control_improvements.users_without_row_policies_can_read_rows` (shi
 - https://clickhouse.com/docs/operations/system-tables/mutations
 - https://clickhouse.com/docs/operations/system-tables/errors
 - https://clickhouse.com/docs/operations/system-tables/settings
-- https://clickhouse.com/docs/reference/settings/session-settings/{send-logs,log,log-queries,log-query,query-profiler,memory-profiler,max-threads,max,max-execution,max-result,max-rows,max-concurrent,max-memory-usage,allow,other}.md
+- https://clickhouse.com/docs/reference/settings/session-settings/{send-logs,log,log-queries,log-query,query-profiler,memory-profiler,max-threads,max,max-execution,max-result,max-rows,max-concurrent,max-memory-usage,allow,other}
 - https://clickhouse.com/docs/operations/access-rights
 - https://clickhouse.com/docs/operations/settings/settings-users
 - https://clickhouse.com/docs/operations/settings/settings-profiles

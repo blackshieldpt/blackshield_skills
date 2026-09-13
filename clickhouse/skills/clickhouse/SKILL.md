@@ -1,7 +1,7 @@
 ---
 name: clickhouse
 description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse: MergeTree schema and sorting-key design, partitioning, data types and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, aggregate states, FINAL), EXPLAIN and system.query_log diagnostics, ingestion, insert deduplication, materialized views, merges and too-many-parts, mutations, Distributed tables, replication and Keeper, backup/restore, access control, Cloud vs OSS. Use when writing ClickHouse DDL/SQL, judging ClickHouse SQL for correctness or performance (including when a code review touches ClickHouse), tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations, slow merges, or Keeper/ZooKeeper trouble. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
-version: 1.1.1
+version: 1.1.2
 ---
 
 # ClickHouse Skill
@@ -27,7 +27,8 @@ Reference files, load when the task goes deep:
 
 Against a running ClickHouse, run freely: `SELECT` / `SHOW` / `EXPLAIN` / `DESCRIBE`,
 query-scoped `SETTINGS`, session `SET` of query-level settings, `SYSTEM FLUSH LOGS`,
-`SYSTEM SYNC REPLICA`, and `KILL ... TEST` (which only lists).
+`SYSTEM SYNC REPLICA` / `SYSTEM SYNC DATABASE REPLICA` / `SYSTEM WAIT VIEW` (they only
+wait), and `KILL ... TEST` (which only lists).
 Anything else — `ALTER` (including `MODIFY SETTING`), `OPTIMIZE`, `KILL`,
 `DROP`/`DETACH`/`ATTACH`, any other `SYSTEM ...`, `INSERT`/`DELETE`/`UPDATE`, server or
 user config file edits (`config.xml`, `users.xml`), and state-changing CLI tools
@@ -91,7 +92,7 @@ The server default is `lz4` (self-managed) / `zstd` (Cloud). `ZSTD(1)`/`ZSTD(2)`
 - Skip indexes only help when the indexed column **correlates with the sorting key**. For an uncorrelated high-cardinality identifier, change the sorting key or add a projection instead — a skip index will not prune anything.
 - `minmax` for loosely-sorted numeric/date columns; `set(N)` for columns with low cardinality *within* a granule range; `bloom_filter` for membership tests over discrete values.
 - `tokenbf_v1` / `ngrambf_v1` are **deprecated**; use the dedicated text index for full-text style searches (GA in 26.2 — still experimental on older servers).
-- Skip indexes are built when a part is written (insert or merge). They are **not** applied retroactively to pre-existing data — run `ALTER TABLE ... MATERIALIZE INDEX` to backfill them.
+- Skip indexes are built when a part is written (insert or merge). They are **not** applied retroactively to pre-existing data — propose `ALTER TABLE ... MATERIALIZE INDEX` to backfill them (§0 applies).
 - `index_granularity`: default 8192. **Never go below 128.** Low values help point lookups but risk server stability (mark cache pressure). Large values (e.g. 32000) suit wide scans.
 
 ### Projections and dictionaries

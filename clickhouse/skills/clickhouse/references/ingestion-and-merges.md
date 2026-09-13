@@ -93,6 +93,8 @@ TTL moves and deletes data through merges. If TTL boundaries do not line up with
 - https://www.tinybird.co/blog/clickhouse-streaming-analytics
 - https://www.tinybird.co/blog/1b-rows-per-second-clickhouse
 - https://clickhouse.com/docs/reference/settings/session-settings/async-insert
+- https://clickhouse.com/docs/reference/settings/session-settings/max-insert
+- https://clickhouse.com/docs/reference/settings/session-settings/insert
 - https://clickhouse.com/docs/reference/settings/merge-tree-settings/other
 - https://clickhouse.com/docs/sql-reference/statements/delete
 - https://clickhouse.com/docs/sql-reference/statements/update

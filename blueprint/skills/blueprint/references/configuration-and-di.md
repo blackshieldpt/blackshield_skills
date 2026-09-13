@@ -22,7 +22,8 @@ type Config struct {
 
 func NewConfig() *Config {
     return &Config{WebApi: NewApiConfig(), Db: pgsql.NewClientConfig(), Metadata: &etcd.Config{},
-        Prometheus: prometheus.NewConfig(), Log: log.NewDefaultConfig(), App: NewAppConfig()}
+        Prometheus: prometheus.NewConfig(), Log: log.NewDefaultConfig(), App: NewAppConfig(),
+        Auth: &AuthConfig{}}
 }
 ```
 
@@ -65,7 +66,8 @@ JSON files in `config/`, one template per service:
   "etcd": { "endpoints": ["localhost:2379"] },
   "prometheus": { "host": "0.0.0.0", "port": 2111 },
   "log": { "level": "info" },
-  "app": { "adminUser": "admin@localhost" }
+  "app": { "adminUser": "admin@localhost" },
+  "auth": { "jwtPrivateKey": { "keyFile": "/run/secrets/jwt.key" }, "jwtPublicKey": { "keyFile": "/run/secrets/jwt.pub" } }
 }
 ```
 
@@ -81,8 +83,9 @@ Two-level DI: **AppContext** holds infrastructure, **ServiceContext** holds busi
 type AppContext struct {
     PgDb     *db.SqlClient
     Metadata metadata.Provider
-    Auth     *goauth.AuthService
-    Logger   *log.Logger
+    Auth      *goauth.AuthService
+    AuthStore *pgstore.Store
+    Logger    *log.Logger
     Svc      *ServiceContext
 }
 

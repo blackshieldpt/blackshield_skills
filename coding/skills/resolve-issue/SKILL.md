@@ -1,7 +1,7 @@
 ---
 name: resolve-issue
 description: "This skill should be used when the user asks to \"fix issue N\", \"resolve issue N\", \"address issue N\", \"implement issue N\", \"open a PR for issue N\", or \"land this change\" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh. Not for ad-hoc fixes with no issue and no request to land them; for those, work normally. \"Close issue N\" without a fix is a one-step close, confirmed first."
-version: 0.7.0
+version: 0.8.0
 argument-hint: "[issue-number | branch | description]"
 ---
 
@@ -60,16 +60,19 @@ needs an explicit ask. Ask once before going beyond that. If `gh` is missing,
 unauthenticated, or the remote is not GitHub, stop and say so.
 
 **Re-entry.** `git fetch origin`, then look for the branch: `$ARGUMENTS` if it is one,
-else `git branch --all --list '*/<N>-*'`. If it exists: `git switch <branch>`, skip
-phases 1 and 2 entirely, resolve `<base>`, and record `<pushed>` = `origin/<branch>` when
-that ref exists (else `<pushed>` is unset and `<base>` stands in for it below). If
+else `git branch --all --list '*/<N>-*'`. If it exists: `git status --porcelain` must be
+empty first (else stop and ask), then `git switch <branch>`, skip phases 1 and 2
+entirely, resolve `<base>`, and record `<pushed>` = `origin/<branch>` when that ref
+exists (else `<pushed>` is unset and `<base>` stands in for it below). If
+`git log <from>..HEAD` is non-empty — local commits not on `<from>` — stop and ask before
+anything that could revert. If
 `$ARGUMENTS` is a branch whose name carries no issue number, ask for `<N>`. Read claims,
 plan, and table from the issue comments only where `viewerDidAuthor` is true and
 `includesCreatedEdit` is false (`gh issue view <N> --json comments`); otherwise
 reconstruct them from the issue and `git diff <base>` and post a new comment (post only
-what was reconstructed — phase 3 does not re-post a plan already recovered). Then run
-`git status --porcelain`; every listed path must be one the plan names or a test file,
-otherwise stop and ask. Work already on `origin/<branch>` is never discarded by the
+what was reconstructed — phase 3 does not re-post a plan already recovered). Then re-check
+`git status --porcelain` after the switch; every listed path must be one the plan names
+or a test file, otherwise stop and ask. Work already on `origin/<branch>` is never discarded by the
 revert rule below. `gh pr list --head <branch>` decides whether phase 7 creates the PR
 or updates it — an update reads the existing body and carries its Review section
 forward. Run phases 3 to 7 in full.
@@ -104,12 +107,15 @@ this file and pass them to every subagent.
 
 ## 1. The issue
 
-`git switch <main> && git pull --ff-only` first, so the issue is filed against the commit
-the branch will start from. Every landed change traces to an issue.
-`gh issue view <N> --json title,body,labels,comments`. If no issue exists, **invoke the
-`file-issue` skill** (`coding:file-issue`) and continue with the number it reports; for
-defects found on the way, hand it a scratchpad worktree at `<base>` since the checkout is
-dirty by then; the same goes for every pre-existing defect found on the way.
+`git status --porcelain` must be empty — if not, stop and ask what to do with the
+carried-over changes — then `git switch <main> && git pull --ff-only` (in a linked
+worktree: `git -C <primary> pull`, per `references/parallel-worktrees.md`), so the issue is
+filed against the commit the branch will start from. Every landed change traces to an
+issue. `gh issue view <N> --json title,body,labels,comments`. If no issue exists,
+**invoke the `file-issue` skill** (`coding:file-issue`) and continue with the number it
+reports. Later, when the checkout is dirty, every pre-existing defect found on the way
+goes through `file-issue` too, handed a scratchpad worktree at `<base>` and `$REPO`
+already resolved, so it neither reads the branch tree nor re-asks for the target.
 It owns the title slot, the three labels, the body order, the numbered claims, the
 commit-under-test line, and the disproof pass — none of that is re-derived here.
 
@@ -251,9 +257,9 @@ These rules stop the patch-the-patch loop.
 - **Revert, do not patch.** When the change is wrong: back up every touched test file
   with `$S/mutate.sh backup`; `<from>` is `<pushed>` when set, else `<base>`. Revert only
   *this attempt's* source changes: `git checkout <from> -- <paths in git diff <from>
-  --name-only that exist at <from>>`, then delete the files this attempt created —
-  nothing is committed before phase 6, so they are the untracked non-test paths from
-  `git ls-files --others --exclude-standard` (never the test files). Restore the test
+  --name-only that exist at <from>>`, then delete the files this attempt created: the
+  paths in `git diff <from> --name-only --diff-filter=A` plus the untracked non-test paths
+  from `git ls-files --others --exclude-standard` (never the test files). Restore the test
   files, post a new plan comment saying what was wrong, and implement again from that
   plan. Outside the merge sequence's rebase, never discard commits already on
   `origin/<branch>`; if the wrong change is already pushed, stop and ask.
@@ -329,6 +335,6 @@ step.
   linked worktree.
 - `scripts/default-branch.sh` (no arguments), `scripts/base-run.sh`, `scripts/mutate.sh`:
   used above; all print usage on bad arguments, and `base-run.sh` exits 2 with a
-  `base-run.sh:` line on stderr for its own errors — check stderr, since some runners
-  (pytest) also exit 2 on interruption. `scripts/selftest.sh` runs after
+  `base-run.sh: error:` line on stderr for its own errors — check for that line, since
+  some runners (pytest) also exit 2 on interruption. `scripts/selftest.sh` runs after
   editing any of them.

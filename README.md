@@ -83,7 +83,8 @@ Every setting name, default and version claim was checked against the ClickHouse
 the articles the core rules were distilled from.
 
 **Triggers automatically** when writing or reviewing ClickHouse DDL/SQL, tuning ingestion
-or query latency, designing materialized views, or debugging OOM, `TOO_MANY_PARTS`,
+or query latency, designing materialized views, judging ClickHouse SQL inside a code
+review, or debugging OOM, `TOO_MANY_PARTS`, stuck mutations, Keeper trouble,
 read-only tables or slow merges.
 
 ## Usage

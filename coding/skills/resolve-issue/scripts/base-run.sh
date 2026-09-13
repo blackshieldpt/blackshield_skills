@@ -7,8 +7,8 @@
 #   -t  repo-relative file or directory to copy into the base checkout
 #   -s  shell command run inside the base checkout before the tests (fixtures, symlinks)
 set -uo pipefail
-usage() { echo "base-run.sh: usage: $0 -t <test-path> [-t ...] [-s <setup-cmd>] -- <command>" >&2; exit 2; }
-die() { echo "base-run.sh: $*" >&2; exit 2; }
+usage() { echo "base-run.sh: error: usage: $0 -t <test-path> [-t ...] [-s <setup-cmd>] -- <command>" >&2; exit 2; }
+die() { echo "base-run.sh: error: $*" >&2; exit 2; }
 tests=(); setup=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -28,10 +28,10 @@ for t in "${tests[@]}"; do
   [ -e "$full" ] || die "$t not found (paths are repo-relative)"
 done
 for a in "$@"; do
-  case "$a" in "$root"*) die "command argument '$a' is an absolute path into the working tree; use a relative path so the base copy is run" ;; esac
+  case "$a" in "$root"/*|"$root") die "command argument '$a' is an absolute path into the working tree; use a relative path so the base copy is run" ;; esac
 done
 
-main=$("$(dirname "$0")/default-branch.sh") || exit 2
+main=$("$(dirname "$0")/default-branch.sh") || die "default branch could not be resolved"
 GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
   git -C "$root" fetch -q origin "$main" 2>/dev/null \
   || echo "base-run.sh: origin unreachable, using last fetched origin/$main" >&2
