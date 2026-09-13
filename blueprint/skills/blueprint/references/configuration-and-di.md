@@ -6,45 +6,34 @@ Part of the Blueprint skill. Section numbers match the original guide.
 
 ### 4.1 Config Struct
 
-Each service has a top-level `Config` with nested provider configs. JSON tags map to config file sections. Always declare a `NewConfig()` constructor that returns sensible defaults — Blueprint provider configs expose their own `New*Config()` constructors, and custom sub-configs should follow the same pattern.
+- One top-level `Config` per service with nested provider configs; JSON tags map to config file sections.
+- Always declare `NewConfig()` returning sensible defaults. Blueprint provider configs expose their own `New*Config()` constructors; custom sub-configs follow the same pattern.
 
 ```go
 type Config struct {
-    WebApi     *ApiConfig              `json:"webApi"`
-    Db         *pgsql.ClientConfig     `json:"pgsql"`
-    Metadata   *etcd.Config            `json:"etcd"`
-    Prometheus *prometheus.Config       `json:"prometheus"`
-    Log        *log.Config             `json:"log"`
-    App        *AppConfig              `json:"app"`
+    WebApi     *ApiConfig          `json:"webApi"`
+    Db         *pgsql.ClientConfig `json:"pgsql"`
+    Metadata   *etcd.Config        `json:"etcd"`
+    Prometheus *prometheus.Config  `json:"prometheus"`
+    Log        *log.Config         `json:"log"`
+    App        *AppConfig          `json:"app"`
 }
 
 func NewConfig() *Config {
-    return &Config{
-        WebApi:     NewApiConfig(),
-        Db:         pgsql.NewClientConfig(),
-        Metadata:   &etcd.Config{},
-        Prometheus: prometheus.NewConfig(),
-        Log:        log.NewDefaultConfig(),
-        App:        NewAppConfig(),
-    }
+    return &Config{WebApi: NewApiConfig(), Db: pgsql.NewClientConfig(), Metadata: &etcd.Config{},
+        Prometheus: prometheus.NewConfig(), Log: log.NewDefaultConfig(), App: NewAppConfig()}
 }
 ```
 
 ### 4.2 Validation
 
-Always provide `Validate()` that chains sub-validations:
+Always provide `Validate()` that chains sub-validations, returning the first error:
 
 ```go
 func (c *Config) Validate() error {
-    if err := c.WebApi.Validate(); err != nil {
-        return err
-    }
-    if err := c.Db.Validate(); err != nil {
-        return err
-    }
-    if err := c.Metadata.Validate(); err != nil {
-        return err
-    }
+    if err := c.WebApi.Validate(); err != nil { return err }
+    if err := c.Db.Validate(); err != nil { return err }
+    if err := c.Metadata.Validate(); err != nil { return err }
     // ...
     return nil
 }
@@ -54,17 +43,16 @@ func (c *Config) Validate() error {
 
 ```go
 cfg := NewConfig()
-m.AbortFatal(m.Config.Get(cfg))       // load entire config
+m.AbortFatal(m.Config.Get(cfg))   // load entire config
 m.AbortFatal(cfg.Validate())
 
-// or load a single section:
 logCfg := log.NewDefaultConfig()
-m.Config.GetKey("log", logCfg)
+m.Config.GetKey("log", logCfg)    // or load a single section
 ```
 
 ### 4.4 Config File Format
 
-JSON files in `config/`. Each service has its own template:
+JSON files in `config/`, one template per service:
 
 ```json
 {
@@ -86,7 +74,7 @@ JSON files in `config/`. Each service has its own template:
 
 ### 5.1 Context Structs
 
-Two-level DI: an **AppContext** holds infrastructure, a **ServiceContext** holds business services.
+Two-level DI: **AppContext** holds infrastructure, **ServiceContext** holds business services.
 
 ```go
 type AppContext struct {
@@ -98,9 +86,9 @@ type AppContext struct {
 }
 
 type ServiceContext struct {
-    User     *service.UserService
-    Product  *service.ProductService
-    Order    *service.OrderService
+    User    *service.UserService
+    Product *service.ProductService
+    Order   *service.OrderService
 }
 
 func NewServiceContext(ctx context.Context, appCtx *AppContext) (*ServiceContext, error) {
@@ -114,7 +102,8 @@ func NewServiceContext(ctx context.Context, appCtx *AppContext) (*ServiceContext
 
 ### 5.2 Service Container (Flat Alternative)
 
-For simpler services without GoAuth or complex infrastructure, use a single flat container that creates repositories once and wires all services:
+- Simpler services (no GoAuth, no complex infrastructure): one flat container creates repositories once and wires all services.
+- Services needing cross-domain validation receive multiple repositories (`NetworkService` gets `entityRepo` to verify FK existence).
 
 ```go
 type Container struct {
@@ -129,7 +118,6 @@ func NewContainer(ctx context.Context, conn *db.SqlClient, logger *log.Logger) *
     siteRepo := repository.NewSiteRepository(ctx, conn, logger)
     assetRepo := repository.NewAssetRepository(ctx, conn, logger)
     networkRepo := repository.NewNetworkRepository(ctx, conn, logger)
-
     return &Container{
         Entity:  NewEntityService(entityRepo, logger),
         Site:    NewSiteService(siteRepo, logger),
@@ -139,11 +127,9 @@ func NewContainer(ctx context.Context, conn *db.SqlClient, logger *log.Logger) *
 }
 ```
 
-Services that need cross-domain validation receive multiple repositories (e.g., `NetworkService` receives `entityRepo` to verify FK existence).
-
 ### 5.3 Factory Functions
 
-Cross-cutting concerns are initialized via factory functions in `pkg/factories/`. Factories use `app.AbortFatal(err)` for unrecoverable errors and register destructors for cleanup.
+Cross-cutting concerns are initialized by factories in `pkg/factories/`. Factories call `app.AbortFatal(err)` on unrecoverable errors and register destructors for cleanup.
 
 ```go
 func BuildLog(app *blueprint.Container, logger *log.Logger) *log.Logger {
@@ -164,9 +150,7 @@ func BuildMetadataClient(app *blueprint.Container, cfg *etcd.Config, logger *log
     client, err := etcd.NewClient(cfg)
     app.AbortFatal(err)
     meta := metadata.NewEtcdMetadata(client, logger)
-    blueprint.RegisterDestructor(func() error {
-        return client.Close()
-    })
+    blueprint.RegisterDestructor(func() error { return client.Close() })
     return meta
 }
 ```

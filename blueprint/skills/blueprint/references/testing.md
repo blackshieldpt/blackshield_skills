@@ -6,10 +6,9 @@ Part of the Blueprint skill. Section numbers match the original guide.
 
 ### 14.1 Test Infrastructure
 
-Use testcontainers for real database instances:
+testcontainers for real database instances, in `internal/testutil/database.go`:
 
 ```go
-// internal/testutil/database.go
 type TestContext struct {
     Ctx       context.Context
     Databases *TestDatabases
@@ -21,7 +20,7 @@ func (tc *TestContext) Cleanup() { ... }
 
 ### 14.2 Test Suite Pattern
 
-Use testify suites for integration tests:
+testify suites for integration tests:
 
 ```go
 type ProductServiceTestSuite struct {
@@ -34,14 +33,8 @@ func (suite *ProductServiceTestSuite) SetupSuite() {
     suite.tc = testutil.NewPgTestContext(suite.T())
     // run migrations, create fixtures, wire services
 }
-
-func (suite *ProductServiceTestSuite) TearDownSuite() {
-    suite.tc.Cleanup()
-}
-
-func TestProductServiceSuite(t *testing.T) {
-    suite.Run(t, new(ProductServiceTestSuite))
-}
+func (suite *ProductServiceTestSuite) TearDownSuite() { suite.tc.Cleanup() }
+func TestProductServiceSuite(t *testing.T)           { suite.Run(t, new(ProductServiceTestSuite)) }
 ```
 
 ### 14.3 Test Naming
@@ -61,24 +54,13 @@ suite.Assert().NotEmpty(value)
 
 ### 14.5 Makefile Targets
 
-```makefile
-test:              ## Run all tests
-    go test ./...
-
-test-unit:         ## Unit tests only
-    go test -short ./...
-
-test-integration:  ## Integration tests (with testcontainers)
-    go test ./service/... -v
-
-test-race:         ## Tests with race detector
-    go test -race ./...
-
-test-coverage:     ## Coverage report
-    go test -coverprofile=coverage.out ./...
-
-test-file:         ## Run tests in specific directory
-    go test -v ./$(dir $(FILE))/...
-```
+| Target | Command | Purpose |
+|---|---|---|
+| `test` | `go test ./...` | All tests |
+| `test-unit` | `go test -short ./...` | Unit tests only |
+| `test-integration` | `go test ./service/... -v` | Integration tests (with testcontainers) |
+| `test-race` | `go test -race ./...` | Race detector |
+| `test-coverage` | `go test -coverprofile=coverage.out ./...` | Coverage report |
+| `test-file` | `go test -v ./$(dir $(FILE))/...` | Tests in a specific directory |
 
 ---
