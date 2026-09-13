@@ -57,7 +57,7 @@ CREATE DICTIONARY country_dict
 )
 PRIMARY KEY id
 SOURCE(CLICKHOUSE(host 'localhost' port 9000 user 'default' password '' db 'ref' table 'countries'))
-LAYOUT(HASHED())
+LAYOUT(HASHED_ARRAY())
 LIFETIME(MIN 600 MAX 900);
 ```
 

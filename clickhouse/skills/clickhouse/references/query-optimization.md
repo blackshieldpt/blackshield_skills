@@ -18,9 +18,10 @@ Bad — 30-60 ms, 139.26k rows, 10.31 MB:
 SELECT * FROM nyc_taxi ORDER BY tpep_pickup_datetime ASC
 ```
 
-Good — 1-10 ms, 24.58k rows, 1.82 MB:
+Good — 1-10 ms, 24.58k rows, 1.82 MB (Tinybird's example used `SELECT *`; project the
+columns you need in real queries — see below):
 ```sql
-SELECT *
+SELECT vendorid, tpep_pickup_datetime, trip_distance
 FROM nyc_taxi
 WHERE trip_distance > 10
   AND tpep_pickup_datetime >= '2017-01-31 14:00:00'
@@ -36,7 +37,7 @@ SELECT * FROM data_source_sorted_by_date WHERE amount > 30
 
 Good — hits the sorting key:
 ```sql
-SELECT * FROM data_source_sorted_by_date
+SELECT id, date, amount FROM data_source_sorted_by_date
 WHERE id = 135246 AND date > now() - INTERVAL 3 DAY
 ```
 
@@ -156,3 +157,14 @@ Granule heuristic from the case study: a trailing key column pays off when each 
 - To spread one query across replicas use parallel replicas (`enable_parallel_replicas=1`, `max_parallel_replicas`, `cluster_for_parallel_replicas` — `default` on Cloud). `clusterAllReplicas()` is a debugging/comparison table function — it treats every replica as a shard and returns **duplicated rows** on a replicated table.
 - Sub-20 ms latency requires warm caches — size it with the `mark_cache_size` server setting and watch `MarkCacheBytes` / `MarkCacheFiles` in `system.metrics`.
 - Read-only benchmarks lie. Measure with concurrent ingestion running.
+
+## Sources
+
+- https://www.tinybird.co/docs/classic/work-with-data/query/sql-best-practices
+- https://www.tinybird.co/blog/what-i-learned-operating-clickhouse-part-ii
+- https://jordivillar.com/blog/every-millisecond-counts
+- https://clickhouse.com/docs/sql-reference/statements/select/prewhere
+- https://clickhouse.com/docs/operations/settings/settings
+- https://clickhouse.com/docs/guides/replacing-merge-tree
+- https://clickhouse.com/docs/deployment-guides/parallel-replicas
+- https://clickhouse.com/docs/sql-reference/table-functions/cluster

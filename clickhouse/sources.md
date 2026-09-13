@@ -5,4 +5,5 @@ https://www.tinybird.co/blog/clickhouse-streaming-analytics
 https://www.tinybird.co/blog/real-time-streaming-data-architectures-that-scale
 https://www.tinybird.co/blog/what-are-materialized-views-and-why-do-they-matter-for-realtime
 https://www.tinybird.co/blog/1b-rows-per-second-clickhouse
+https://jordivillar.com/blog/every-millisecond-counts
 

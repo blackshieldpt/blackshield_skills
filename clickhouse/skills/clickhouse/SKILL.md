@@ -1,7 +1,7 @@
 ---
 name: clickhouse
-description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse. Covers MergeTree schema and sorting-key design, partitioning, data types (JSON, Variant, Dynamic, UUID, Decimal, LowCardinality) and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, GROUP BY, aggregate states), EXPLAIN and system.query_log diagnostics, ingestion and batching, insert deduplication, incremental and refreshable materialized views and backfills, merges and 'too many parts', mutations and lightweight DELETE/UPDATE, Distributed tables and sharding, replication and Keeper, backup/restore, access control and quotas, Cloud vs OSS differences, and community-sourced pitfalls. Use when writing ClickHouse DDL/SQL, judging ClickHouse SQL for correctness or performance (including when a code review touches ClickHouse), tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations or slow merges. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
-version: 1.0.0
+description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse: MergeTree schema and sorting-key design, partitioning, data types and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, aggregate states, FINAL), EXPLAIN and system.query_log diagnostics, ingestion, insert deduplication, materialized views, merges and too-many-parts, mutations, Distributed tables, replication and Keeper, backup/restore, access control, Cloud vs OSS. Use when writing ClickHouse DDL/SQL, judging ClickHouse SQL for correctness or performance (including when a code review touches ClickHouse), tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations, slow merges, or Keeper/ZooKeeper trouble. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
+version: 1.1.0
 ---
 
 # ClickHouse Skill
@@ -25,11 +25,14 @@ Reference files, load when the task goes deep:
 
 ## 0. Live servers
 
-Against a running ClickHouse, run `SELECT` / `SHOW` / `EXPLAIN` / `DESCRIBE` freely.
-Anything else — `ALTER`, `OPTIMIZE`, `KILL`, `DROP`/`DETACH`/`ATTACH`, `SYSTEM ...`,
-`INSERT`/`DELETE`/`UPDATE`, settings changes — print the exact statement and the
-expected effect and wait for an explicit yes before executing. The recovery commands in
-this skill are what to propose, not what to run unasked.
+Against a running ClickHouse, run freely: `SELECT` / `SHOW` / `EXPLAIN` / `DESCRIBE`,
+query-scoped `SETTINGS`, session `SET` of query-level settings, and `SYSTEM FLUSH LOGS`.
+Anything else — `ALTER` (including `MODIFY SETTING`), `OPTIMIZE`, `KILL`,
+`DROP`/`DETACH`/`ATTACH`, any other `SYSTEM ...`, `INSERT`/`DELETE`/`UPDATE`, server or
+user config file edits (`config.xml`, `users.xml`), and state-changing CLI tools
+(`clickhouse-keeper-converter`, `clickhouse-backup`) — print the exact statement or
+command and the expected effect and wait for an explicit yes before executing. The
+recovery commands in this skill are what to propose, not what to run unasked.
 
 ## 1. Non-negotiables
 
@@ -183,7 +186,7 @@ See `references/materialized-views.md`.
 | "Merges are processing significantly slower than inserts" | Merge throughput saturated | Increase `background_pool_size`, apply backpressure upstream, relax queue-size limits |
 | `MEMORY_LIMIT_EXCEEDED` on JOIN | Right table too big | Pre-filter right side with `IN (SELECT id FROM left)`; reduce columns; chunk with `LIMIT` |
 | OOM on ingest | Materialized view aggregation | Reduce MV cardinality, avoid `uniqExact*`, shrink insert blocks |
-| Table in read-only mode | Keeper/ZooKeeper failure or replica startup delay | Alert on it; recover via detach/re-attach or drop + recreate + resync |
+| Table in read-only mode | Keeper/ZooKeeper failure or replica startup delay | Alert on it; recover **in order**: wait for reconnect → `SYSTEM RESTART REPLICA` → `SYSTEM RESTORE REPLICA` → detach/attach → drop + recreate + resync (see `references/distributed-and-replication.md`) |
 | Query got slower after upgrade | Changed setting defaults | Diff settings between versions; check `system.query_log` |
 | Binary garbage in results | Reading an `AggregateFunction` column directly | Apply the `-Merge` combinator |
 | Slow `ON CLUSTER` DDL | A replica is down | Set client timeouts; check DDL queue length |
@@ -198,7 +201,7 @@ See `references/materialized-views.md`.
 | DateTime literal compares differently by client | Bare string parsed in column tz, `toDateTime(s)` in session tz | Pass tz explicitly; store `DateTime('UTC')`; pin `session_timezone` |
 | HTTP 200 with exception in body | Headers sent once streaming starts | `wait_end_of_query=1`; check `X-ClickHouse-Exception-Code` |
 
-Sixty more, symptom-first, in `references/community-gotchas.md`.
+About sixty-five, symptom-first, in `references/community-gotchas.md`.
 
 ---
 
@@ -218,14 +221,3 @@ Sixty more, symptom-first, in `references/community-gotchas.md`.
 See `references/operations.md`.
 
 ---
-
-## 9. Sources
-
-Core rules distilled from Tinybird's operational write-ups and SQL best-practice docs; reference files add ClickHouse docs, the ClickHouse blog, Altinity KB, PostHog, Cloudflare and Uber engineering posts (URLs in each file):
-
-- `what-i-learned-operating-clickhouse` (parts I and II)
-- `sql-best-practices`
-- `clickhouse-streaming-analytics`
-- `what-are-materialized-views-and-why-do-they-matter-for-realtime`
-- `1b-rows-per-second-clickhouse`
-- jordivillar.com `every-millisecond-counts` (FINAL / ReplacingMergeTree case study)

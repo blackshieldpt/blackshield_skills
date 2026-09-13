@@ -1,7 +1,7 @@
 ---
 name: blueprint
 description: "Guidelines for building Go applications on the Blueprint framework (github.com/oddbit-project/blueprint) and GoAuth authentication library (github.com/blackshieldpt/goauth). Covers architecture, providers, HTTP API patterns, database access, authentication, testing, migrations, error handling, and style rules. Use when code imports github.com/oddbit-project/blueprint or github.com/blackshieldpt/goauth, or user mentions Blueprint framework, Blueprint provider, Blueprint container, or GoAuth. Skip when the project has no Go files or no Blueprint/GoAuth dependency."
-version: 1.2.1
+version: 1.2.2
 ---
 
 # Blueprint
@@ -77,7 +77,7 @@ ctx.Logger   = factories.BuildLog(m.Container, m.logger)
 ctx.Metadata = factories.BuildMetadataClient(m.Container, cfg.Metadata, ctx.Logger)
 ctx.PgDb     = m.initDb(cfg.Db)
 if m.args.Migrate != nil && *m.args.Migrate { m.AbortFatal(migrations.PgMigrate(m.Context, ctx.PgDb)) }
-ctx.Svc, err = core.NewServiceContext(m.Context, ctx); m.AbortFatal(err)
+svc, err := core.NewServiceContext(m.Context, ctx); m.AbortFatal(err); ctx.Svc = svc
 m.initWebApi(cfg.WebApi, ctx)
 return ctx
 ```

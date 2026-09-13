@@ -25,8 +25,9 @@ Put this in the brief, verbatim, above the inputs:
 - the evidence table from `testing.md`;
 - the list of framework and library skills to load before reading;
 - the project rules (base-run setup, suite serialisation, conventions);
-- **the failure modes already found in this repository**, in one or two lines each,
-  carried forward from earlier issues' review rounds. Reviews are independent, so without
+- **the failure modes already found in this repository**, in one or two lines each — the
+  defect-class lines from the "Review" sections of recent merged PRs
+  (`gh pr list --state merged --limit 10`) plus anything the project rules list. Reviews are independent, so without
   this each one rediscovers the same class of defect: a recover placed where something it
   skips past is left inconsistent, a bound compared against a quantity that does not bound
   it, a counter that cannot climb because the work it counts is cached. Naming the classes
@@ -36,9 +37,11 @@ Put this in the brief, verbatim, above the inputs:
 ## Constraints on the reviewer
 
 May read anything in the checkout. May run `$S/base-run.sh` for any test in the evidence
-table using that row's command and setup, and may run those tests individually in the
-checkout, to check the table; respects any suite serialisation rule while doing so. Must
-not edit files, run full suites, run mutations, use `gh`, or spawn subagents.
+table using that row's command and setup (it is worktree-based and touches nothing in the
+checkout), and may run those tests individually in the checkout, to check the table;
+respects any suite serialisation rule while doing so. Must not edit files, run full
+suites, run mutations, use `gh` for anything that writes, or spawn subagents. Never
+reproduces secret values — `file:line` and the credential type only.
 
 ## Instruction
 

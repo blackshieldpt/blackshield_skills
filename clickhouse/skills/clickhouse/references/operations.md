@@ -79,3 +79,11 @@ Track continuously: query count, ZooKeeper latencies, S3 errors, replication lag
 - Sustained heavy load (>20k rows/s with frequent schema/query changes) needs a full-time ClickHouse engineer.
 - Following the basic rules in this skill is worth 3-4x in hardware cost.
 - Reading the ClickHouse source is a normal part of operating it — unusually so among databases. Most large users carry upstream patches.
+
+## Sources
+
+- https://www.tinybird.co/blog/what-i-learned-operating-clickhouse
+- https://www.tinybird.co/blog/what-i-learned-operating-clickhouse-part-ii
+- https://clickhouse.com/docs/sql-reference/statements/system
+- https://clickhouse.com/docs/operations/update
+- https://clickhouse.com/docs/reference/settings/session-settings/compatibility

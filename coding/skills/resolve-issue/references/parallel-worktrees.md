@@ -11,8 +11,10 @@ are not disturbed:
 ```bash
 git fetch origin
 git worktree add -b <type>/<N>-<slug> <path> origin/<main>
-git -C <path> push -u origin HEAD
 ```
+
+Do not push at creation; the branch is pushed in phase 7 like any other. Every later git
+command in that worktree is `git -C <path> ...`, since the shell's cwd does not persist.
 
 The worktree is on the new branch, not detached, so the plain `git push -u origin HEAD`
 and `gh pr create` forms in `pr-and-merge.md` work there. Never `git switch` inside the

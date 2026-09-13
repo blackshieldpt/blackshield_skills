@@ -31,10 +31,13 @@ The verbatim boundary text from `review.md`, with "the reviewer" read as "this a
 
 ## Procedure
 
-SKILL.md phases 3 and 4 and the "When something fails" section, pasted verbatim, with
-`references/testing.md`. Regression tests already in the table are frozen; the attempt
-starts from the reverted tree, so the test files are present and the source is at
-`<base>`.
+SKILL.md phases 3 and 4 and the "When something fails" section, pasted with these
+substitutions: every "post ... comment" becomes "return the comment text to the parent";
+"draft an issue via `file-issue`" becomes "return the issue text to the parent";
+"the second is a fresh subagent" is omitted (there is no third attempt); and the Setup
+"Subagents" paragraph is not pasted. Include `references/testing.md`. Regression tests
+already in the table are frozen; the attempt starts from the reverted tree, so the test
+files are present and the source is at `<pushed>` on re-entry, else `<base>`.
 
 ## Return contract
 

@@ -41,7 +41,8 @@ in, runs an optional setup command, then runs the test command there. It never s
 modifies the working tree, so it is safe on a branch with commits, on re-entry, and inside
 a linked worktree. The fetch never prompts; if `origin` is unreachable it uses the last
 fetched `origin/<main>`. Exit status is the command's; the script's own failures (bad
-arguments, copy or setup error) exit 2, so a 2 is never a failing test. Pass `-s` for any
+arguments, copy or setup error) exit 2 with a `base-run.sh:` line on stderr — check for
+that line rather than the code alone, since pytest also exits 2 on interruption. Pass `-s` for any
 gitignored setup the repo needs; project rules list them.
 
 Expected outcome: nonzero exit, and the failure text names the symptom from the issue.
@@ -52,8 +53,10 @@ failures in the same module are not the reproduction.
 
 Run only the test under mutation during the loop; run the full suites once at the end.
 `$S/mutate.sh` copies the file to a backup directory under the repo's common git
-directory, keyed by path hash. `restore` consumes the backup, so a stale backup from an
-earlier session can never be restored by mistake; back up again before the next mutation.
+directory, keyed by path hash. `backup` refuses when a backup for that file already
+exists (restore it first — never back up a mutated file over the good copy); `restore`
+consumes the backup. A backup left by a crashed session therefore surfaces as a refused
+`backup` on the next run: inspect it, then `restore` or delete it deliberately.
 Neither `git checkout -- <file>` nor `git stash` is safe: on an uncommitted branch the
 first discards the implementation, and on any branch the second discards uncommitted
 test edits.

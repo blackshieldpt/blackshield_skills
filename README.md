@@ -12,7 +12,7 @@ Comprehensive guidelines for building Go applications on the [Blueprint framewor
 
 - Application lifecycle (New -> Build -> Start)
 - Project structure and conventions
-- Provider usage (PostgreSQL, ClickHouse, Kafka, NATS, etcd, S3, SMTP)
+- Provider setup (SMTP, S3, TLS, NATS), buffered ClickHouse writer, PostgreSQL records
 - HTTP API patterns with Gin
 - Database access with GOQU query builder
 - Authentication with [GoAuth](https://github.com/blackshieldpt/goauth) (JWT + Argon2)
@@ -32,7 +32,11 @@ RPC, testing, logging, providers) live under `references/` and are loaded on dem
 
 General coding workflows:
 
-- `resolve-issue`: takes a defect or feature from GitHub issue to merged PR. One regression
+- `resolve-issue`: takes a defect or feature from GitHub issue to merged PR. Triggers on
+  "fix/resolve/address/implement issue N", "open a PR for issue N", "land this change" —
+  not on ad-hoc fixes with no issue. Files missing issues through `file-issue`, runs
+  `review quick issue N` and the built-in review skills before its own adversarial
+  round. One regression
   test per claim, run against the branch base before the fix and verified by mutation after
   it; a fresh-context adversarial review before the PR opens; loop-prevention rules for
   failed attempts. Requires `gh`. Helper scripts under `skills/resolve-issue/scripts/`;
@@ -46,11 +50,11 @@ General coding workflows:
   "report this bug", "write this up as an issue".
 - `review`: read-only review of a branch, PR, range, or paths in the `improve` style —
   light recon and stack-skill loading, audit across correctness/security/tests/perf/
-  debt/deps/docs, every finding opened at the cited line, HIGH and MEDIUM findings sent
+  debt/deps/docs, every finding opened at the cited line, HIGH and MED findings sent
   to fresh-context refuters (REFUTED / OVERSTATED / CONFIRMED), then a ranked table
   split into introduced vs pre-existing, a tests-as-claims section, "considered and
   rejected", "not reviewed", and an APPROVE / REVISE / BLOCK verdict. Never edits code;
-  `--comment` posts the report to the PR. Triggers on "review my
+  `--comment` posts the report to the PR after it has been shown and confirmed. Triggers on "review my
   changes", "review PR N", "review the branch", "code review of the diff". Deeper than the
   built-in `/code-review`; invoke explicitly as `/coding:review` when both are installed.
 
@@ -71,11 +75,11 @@ holds the rules that matter most; eight reference files go deeper:
 - Distributed tables, replication, Keeper, backup/restore, Cloud vs OSS differences
 - Diagnostics (`EXPLAIN`, `system.query_log`, profiling) and access control/quotas
 - Operations: topology, upgrades, monitoring, incident playbook
-- ~70 community-sourced pitfalls with fixes, plus a reading list
+- ~65 community-sourced pitfalls with fixes, plus a reading list
 
 Every setting name, default and version claim was checked against the ClickHouse docs
-(September 2026). Source URLs are listed in each file; `sources.md` holds the original
-Tinybird articles it was distilled from.
+(September 2026). Each reference file ends with its sources; `clickhouse/sources.md` lists
+the articles the core rules were distilled from.
 
 **Triggers automatically** when writing or reviewing ClickHouse DDL/SQL, tuning ingestion
 or query latency, designing materialized views, or debugging OOM, `TOO_MANY_PARTS`,

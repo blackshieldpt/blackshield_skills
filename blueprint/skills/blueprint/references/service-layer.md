@@ -162,6 +162,7 @@ Metrics ingestion: queue records, flush to ClickHouse periodically. Track health
 type BufferedWriter struct {
     db        *clickhouse.Client
     tableName string
+    config    *WriterConfig
     logger    *log.Logger
 
     queue     chan types.MetricRecord

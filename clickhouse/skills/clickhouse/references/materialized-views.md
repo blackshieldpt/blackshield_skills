@@ -156,3 +156,10 @@ Sources:
 - https://clickhouse.com/docs/sql-reference/statements/system
 - https://clickhouse.com/docs/operations/system-tables/view_refreshes
 - https://clickhouse.com/docs/whats-new/changelog/2023 (23.12) and https://clickhouse.com/docs/whats-new/changelog/2024 (24.10)
+
+## Sources
+
+- https://www.tinybird.co/blog/what-i-learned-operating-clickhouse-part-ii
+- https://www.tinybird.co/blog/what-are-materialized-views-and-why-do-they-matter-for-realtime
+- https://clickhouse.com/docs/sql-reference/statements/create/view
+- https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/uniq

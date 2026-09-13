@@ -4,6 +4,8 @@ Part of the Blueprint skill. Section numbers match the original guide.
 
 ## 19. Providers
 
+Snippets elide error handling for brevity; in real code every `_` below is `err` checked and returned per the style rules.
+
 ### 19.1 SMTP Provider
 
 `github.com/oddbit-project/blueprint/provider/smtp` — multiple auth methods, TLS, attachments, batch sending.

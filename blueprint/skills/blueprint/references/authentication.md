@@ -6,7 +6,7 @@ Part of the Blueprint skill. Section numbers match the original guide.
 
 ### 8.1 GoAuth Integration
 
-Initialize GoAuth with an ECDSA key pair for JWT signing; if no keys are provided, generate ephemeral ES256 keys at startup.
+Initialize GoAuth with an ECDSA key pair for JWT signing loaded from `secure.KeyConfig` (§8.9). Empty keys generate ephemeral ES256 keys at startup — **dev only**: every restart invalidates all tokens and replicas cannot verify each other's.
 
 ```go
 func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubPEM string) (*goauth.AuthService, *pgstore.Store, error) {
@@ -31,7 +31,8 @@ func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubP
 Wire into `AppContext` in `Build()`:
 
 ```go
-authSvc, authStore, err := auth.NewGoAuthService(m.Context, ctx.PgDb, "", "")
+privPEM, pubPEM := cfg.Auth.JWTPrivateKey.Value(), cfg.Auth.JWTPublicKey.Value()   // secure.KeyConfig, §8.9; "" only in dev
+authSvc, authStore, err := auth.NewGoAuthService(m.Context, ctx.PgDb, privPEM, pubPEM)
 m.AbortFatal(err)
 ctx.Auth = authSvc; ctx.AuthStore = authStore
 ```

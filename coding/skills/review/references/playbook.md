@@ -181,6 +181,9 @@ prefix; the reviewer renumbers when merging.
   not the caller.)
 - **Reaching path**: how a deployment actually gets here — the entry point and each hop.
 - **Coverage**: the test that should catch it and why it does not (or "none exists").
+- **Reversible**: whether state or data is affected and whether it can be undone.
+- **Adjacent**: other call sites, branches, or configs with the same shape.
+- **Against**: the commit the citations refer to.
 - **Impact**: a grade, then one concrete sentence.
   - **HIGH** — data loss or corruption, a security exposure with a reachable path,
     user-visible breakage, or a cost paid continuously on a critical path.
@@ -240,14 +243,14 @@ per refuter, by subsystem.
 >
 > <If decision docs exist:> Read <path> before judging anything in that area.
 >
-> ## CLAIM 1 — "<one sentence, plain language>"
+> ## FINDING 1 — "<one sentence, plain language>"
 > Stated evidence: <restated in full — the refuter cannot see the audit>.
 > Claimed impact: <what the finding says goes wrong>.
 > Try to refute. Specifically investigate: <3–6 concrete refutation paths — see hints>.
 > Where the finding asserts a causal chain: trace it concretely — does A gate B, does
 > B feed C? If any link is broken the impact fails even if the smell is real.
 >
-> ## CLAIM 2 — ...
+> ## FINDING 2 — ...
 >
 > OUTPUT. Per claim, one verdict, defended with `file:line` you personally read:
 > - **REFUTED** — wrong; show the evidence that kills it.

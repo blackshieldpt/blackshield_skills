@@ -160,7 +160,7 @@ Canonical order: 1 auth guard (admin-only) → 2 parse/validate path params → 
 
 ```go
 func (s *ApiServer) updateProduct(g *gin.Context) {
-    if !s.CurrentUser(g).IsAdmin() { response.Http401(g); return }                       // 1
+    if u := s.CurrentUser(g); u == nil || !u.IsAdmin() { response.Http403(g); return }   // 1 (nil = unresolved user)
     id, err := uuid.Parse(g.Param("id"))
     if err != nil { response.Http400(g, "invalid id"); return }                          // 2
     req := &entity.ProductParams{}

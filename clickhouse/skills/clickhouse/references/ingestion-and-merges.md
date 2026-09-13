@@ -61,7 +61,6 @@ Alternatives, cheapest first:
 - Lightweight `UPDATE ... SET`: writes patch parts; introduced 25.7, still **beta**; requires table settings `enable_block_number_column` and `enable_block_offset_column`.
 - `ReplacingMergeTree` with a version column: rows sharing the **`ORDER BY`** key (not `PRIMARY KEY`) are deduplicated at merge time, keeping the highest version. Caveats that matter: merges happen at an unpredictable time and only within a partition, so duplicates can persist indefinitely and rows with the same key in different partitions are never collapsed. Reads that must be exact need `FINAL` (or an aggregation that tolerates duplicates).
 - `SummingMergeTree` / `AggregatingMergeTree` to fold rows during merges instead of updating them.
-- Partition-level `ALTER TABLE ... DROP PARTITION` instead of row-level deletes.
 
 Track `system.mutations` — stuck mutations are a common silent failure.
 
@@ -87,3 +86,15 @@ TTL moves and deletes data through merges. If TTL boundaries do not line up with
 - Hot local NVMe/SSD cache + S3 cold tier. Pure S3 cannot deliver low latency.
 - ClickHouse's part layout is optimized for local disks; on S3 it produces excessive write operations. Use **compact parts** to cut operation count and avoid rate limits.
 - Zero-copy replication works but is buggy: watch for data loss, orphaned S3 objects, and risky part operations.
+
+## Sources
+
+- https://www.tinybird.co/blog/what-i-learned-operating-clickhouse
+- https://www.tinybird.co/blog/clickhouse-streaming-analytics
+- https://www.tinybird.co/blog/1b-rows-per-second-clickhouse
+- https://clickhouse.com/docs/reference/settings/session-settings/async-insert
+- https://clickhouse.com/docs/reference/settings/merge-tree-settings/other
+- https://clickhouse.com/docs/sql-reference/statements/delete
+- https://clickhouse.com/docs/sql-reference/statements/update
+- https://clickhouse.com/docs/engines/table-engines/mergetree-family/replacingmergetree
+- https://clickhouse.com/docs/engines/table-engines/integrations/kafka

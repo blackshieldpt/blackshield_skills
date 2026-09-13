@@ -38,7 +38,7 @@ GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes"
 base=$(git -C "$root" merge-base "origin/$main" HEAD) || die "cannot find merge-base with origin/$main"
 # drop only this script's own stale worktrees; never a general prune (other agents pin
 # worktrees by name)
-git -C "$root" worktree list --porcelain | awk '/^worktree .*\/base-run\./{print $2}' | while read -r w; do
+git -C "$root" worktree list --porcelain | sed -n 's|^worktree \(.*/base-run\.[^/]*\)$|\1|p' | while IFS= read -r w; do
   [ -d "$w" ] || git -C "$root" worktree remove --force "$w" >/dev/null 2>&1 || true
 done
 wt=$(mktemp -d "${TMPDIR:-/tmp}/base-run.XXXXXX") || die "mktemp failed"

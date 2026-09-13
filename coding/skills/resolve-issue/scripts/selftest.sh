@@ -68,6 +68,7 @@ git remote set-url origin .
 # cwd-relative paths from a subdirectory; non-file rejected
 expect_rc 1 "$here"/mutate.sh restore a
 "$here"/mutate.sh backup a
+expect_rc 1 "$here"/mutate.sh backup a                                         # refuses to overwrite
 echo mutated > a
 "$here"/mutate.sh restore a
 [ "$(cat a)" = changed ] || fail "mutate restore"

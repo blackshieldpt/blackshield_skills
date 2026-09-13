@@ -9,19 +9,21 @@ area (`fix(web):`, `fix(drive):`, `test(retention):`, `docs:`). End with the
 ```bash
 git add -- <paths>
 git commit
-git push -u origin HEAD                 # detached HEAD: git push origin HEAD:refs/heads/<branch>
-gh pr create --title "fix(web): ..." --body "$(cat <<'EOF'   # detached HEAD: add --head <branch>
+git push -u origin HEAD
+gh pr create --title "fix(web): ..." --body "$(cat <<'EOF'
 ...
 EOF
 )"
 ```
 
 On re-entry with commits already pushed, add a commit rather than amending; squash only
-if the repo's history shows squash merges.
+if the repo's history shows squash merges. If `gh pr list --head <branch>` found an open
+PR, `gh pr edit <PR> --body-file <file>` instead of creating a second one.
 
 ## PR body
 
-Redact per SKILL.md Setup; the evidence table's failure column is raw test output.
+Redact per SKILL.md Setup — the evidence table's failure column is raw test output and
+is the place a hostname or path leaks.
 Sections, not a wall:
 
 - `Closes #<N>` on the first line, so the merge closes the issue;
@@ -31,8 +33,10 @@ Sections, not a wall:
 - **Verification**: the evidence table, plus the suite, e2e and typecheck results from
   the run after the last review round, with any suite that could not run marked
   "not run" and why;
-- **Review**: how many adversarial rounds, and what each changed. If a round changed
-  nothing, say that;
+- **Review**: how many adversarial rounds, and what each changed, then **one line per
+  finding naming its defect class** (e.g. "recover placed before the state it skips is
+  reset") — the next issue's reviewer brief pastes these as known failure classes. If a
+  round changed nothing, say that;
 - **Not fixed here**: anything found and filed instead, with issue numbers;
 - what the CHANGELOG entry carries, and which docs were updated.
 
@@ -50,7 +54,8 @@ git fetch origin
 git rebase origin/<main>               # immediately before the merge, never in a batch
 git diff origin/<main> -- CHANGELOG.md # after a keep-both conflict: this PR's entry appears once
 <suite command for the touched area>   # <main> may have grown a call site this PR never saw
-git push --force-with-lease            # detached worktree: git push --force-with-lease origin HEAD:refs/heads/<branch>
+git push --force-with-lease
+gh pr checks <PR> --watch              # every check green; a check that never started is not evidence — see testing.md
 gh pr merge <PR> --<strategy>          # squash, merge, or rebase per the repo's history; ask if unclear
 git switch <main> && git pull          # worktree with <main> checked out elsewhere: git -C <primary> pull
 ```

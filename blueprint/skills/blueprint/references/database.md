@@ -61,7 +61,7 @@ func (s *JobQueueService) Dequeue(ctx context.Context) (*types.Job, error) {
                   max_retries, retry_count, created_at, started_at, completed_at`
     job := &types.Job{}
     err := s.repo.Db().QueryRowxContext(ctx, query, types.JobStatusRunning, types.JobStatusPending).StructScan(job)
-    if err == sql.ErrNoRows { return nil, nil }
+    if errors.Is(err, sql.ErrNoRows) { return nil, nil }
     if err != nil { return nil, err }
     return job, nil
 }
