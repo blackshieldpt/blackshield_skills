@@ -98,6 +98,12 @@ Install from this directory as a marketplace:
 /plugin install clickhouse@blackshield-skills
 ```
 
+Each plugin carries a trigger eval suite under `<plugin>/evals/` (does the right skill
+fire, and stay silent, for representative prompts). Run one with
+`claude plugin eval <plugin> --no-publish --trust-plugin` from this directory; a full
+suite is 12 cases × 2 runs × 2 arms at roughly $0.10 a run, so use `--case <glob>` or
+`--runs 1` when iterating. Results land in `<plugin>/evals/results/` (ignored).
+
 Or load one plugin for a single session:
 
 ```bash

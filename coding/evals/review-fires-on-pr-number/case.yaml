@@ -1,0 +1,15 @@
+schema_version: "1.1"
+name: "review-fires-on-pr-number"
+tags: [trigger, review]
+runs: 2
+execution:
+  max_turns: 4
+  timeout_seconds: 180
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: "fires-review"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?review"'
+    min: 1
+    arm: both
