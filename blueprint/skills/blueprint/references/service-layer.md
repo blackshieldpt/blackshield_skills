@@ -159,6 +159,12 @@ Metrics ingestion: queue records, flush to ClickHouse periodically. Track health
 | `writerFlushErrors` | `panorama_writer_flush_errors_total` | Total flush attempts that failed |
 
 ```go
+type WriterConfig struct {
+    QueueSize     int           // buffered channel capacity
+    BatchSize     int           // rows per INSERT
+    FlushInterval time.Duration // ticker period for partial batches
+}
+
 type BufferedWriter struct {
     db        *clickhouse.Client
     tableName string

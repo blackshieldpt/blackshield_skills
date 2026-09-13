@@ -55,7 +55,7 @@ Track continuously: query count, ZooKeeper latencies, S3 errors, replication lag
 
 | Incident | Response |
 |---|---|
-| Read-only tables | Check Keeper health; replica may be slow to start. Escalate in order: `SYSTEM RESTART REPLICA db.table` → `SYSTEM RESTORE REPLICA db.table` (recreates lost Keeper metadata from local parts) → detach/attach → drop and recreate the replica and let it resync |
+| Read-only tables | Check Keeper health; replica may be slow to start. Escalate in order: wait for reconnect (`readonly_start_time`) → `SYSTEM RESTART REPLICA db.table` → `SYSTEM RESTORE REPLICA db.table` (recreates lost Keeper metadata from local parts) → detach/attach → `SYSTEM DROP REPLICA` + recreate and let it resync |
 | `TOO_MANY_PARTS` | Stop multi-partition writes; batch per partition; raise merge pool; backpressure upstream |
 | Merges slower than inserts | Increase `background_pool_size`, apply backpressure, relax queue-size limits |
 | Slow `ON CLUSTER` DDL | A replica is down; ensure application timeouts are configured for this |

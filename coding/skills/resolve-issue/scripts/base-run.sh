@@ -7,7 +7,7 @@
 #   -t  repo-relative file or directory to copy into the base checkout
 #   -s  shell command run inside the base checkout before the tests (fixtures, symlinks)
 set -uo pipefail
-usage() { echo "usage: $0 -t <test-path> [-t ...] [-s <setup-cmd>] -- <command>" >&2; exit 2; }
+usage() { echo "base-run.sh: usage: $0 -t <test-path> [-t ...] [-s <setup-cmd>] -- <command>" >&2; exit 2; }
 die() { echo "base-run.sh: $*" >&2; exit 2; }
 tests=(); setup=""
 while [ $# -gt 0 ]; do

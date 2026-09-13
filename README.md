@@ -55,8 +55,9 @@ General coding workflows:
   split into introduced vs pre-existing, a tests-as-claims section, "considered and
   rejected", "not reviewed", and an APPROVE / REVISE / BLOCK verdict. Never edits code;
   `--comment` posts the report to the PR after it has been shown and confirmed. Triggers on "review my
-  changes", "review PR N", "review the branch", "code review of the diff". Deeper than the
-  built-in `/code-review`; invoke explicitly as `/coding:review` when both are installed.
+  changes", "review PR N", "review the branch", "review commit X". Deeper than the
+  built-in `/code-review`, which keeps bare "code review"; invoke explicitly as
+  `/coding:review` when both are installed.
 
 Repo-specific rules for these workflows (test commands, scope-label vocabulary, house-style
 examples) live in the target repo, not here. A ready-to-copy example is in `project-notes/`.
@@ -75,7 +76,7 @@ holds the rules that matter most; eight reference files go deeper:
 - Distributed tables, replication, Keeper, backup/restore, Cloud vs OSS differences
 - Diagnostics (`EXPLAIN`, `system.query_log`, profiling) and access control/quotas
 - Operations: topology, upgrades, monitoring, incident playbook
-- ~65 community-sourced pitfalls with fixes, plus a reading list
+- ~60 community-sourced pitfalls with fixes, plus a reading list
 
 Every setting name, default and version claim was checked against the ClickHouse docs
 (September 2026). Each reference file ends with its sources; `clickhouse/sources.md` lists

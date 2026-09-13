@@ -28,10 +28,21 @@ func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubP
 }
 ```
 
+Config carries the keys as `secure.KeyConfig` (§8.9):
+
+```go
+type AuthConfig struct {
+    JWTPrivateKey secure.KeyConfig `json:"jwtPrivateKey"`   // {"jwtPrivateKey": {"keyFile": "/run/secrets/jwt.key"}}
+    JWTPublicKey  secure.KeyConfig `json:"jwtPublicKey"`
+}
+// in Config: Auth *AuthConfig `json:"auth"`
+```
+
 Wire into `AppContext` in `Build()`:
 
 ```go
-privPEM, pubPEM := cfg.Auth.JWTPrivateKey.Value(), cfg.Auth.JWTPublicKey.Value()   // secure.KeyConfig, §8.9; "" only in dev
+privPEM, err := cfg.Auth.JWTPrivateKey.Fetch(); m.AbortFatal(err)   // secure.KeyConfig, §8.9; empty only in dev
+pubPEM, err := cfg.Auth.JWTPublicKey.Fetch();  m.AbortFatal(err)
 authSvc, authStore, err := auth.NewGoAuthService(m.Context, ctx.PgDb, privPEM, pubPEM)
 m.AbortFatal(err)
 ctx.Auth = authSvc; ctx.AuthStore = authStore

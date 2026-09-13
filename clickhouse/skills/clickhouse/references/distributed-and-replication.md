@@ -119,7 +119,7 @@ What lives there for a replicated table: the replica list and their sessions, th
 
 ### Read-only / "Session expired"
 
-`system.replicas.is_readonly` is set when the config has no Keeper section, when the Keeper session cannot be re-initialised, or **during** re-initialisation; `is_session_expired` is "basically the same". Causes, in order of frequency: Keeper quorum lost; Keeper latency/GC pauses exceeding the session timeout (slow disk under `force_sync`, co-located Keeper, overloaded network); the ClickHouse process stalled (swap, huge merge) and missed heartbeats; Keeper metadata for the table deleted. Effects: `INSERT` throws, `SELECT` still works. Recover in order: wait for reconnect (`readonly_start_time` tells you how long) → `SYSTEM RESTART REPLICA` → `SYSTEM RESTORE REPLICA` (metadata lost but parts present) → `SYSTEM DROP REPLICA` + recreate.
+`system.replicas.is_readonly` is set when the config has no Keeper section, when the Keeper session cannot be re-initialised, or **during** re-initialisation; `is_session_expired` is "basically the same". Causes, in order of frequency: Keeper quorum lost; Keeper latency/GC pauses exceeding the session timeout (slow disk under `force_sync`, co-located Keeper, overloaded network); the ClickHouse process stalled (swap, huge merge) and missed heartbeats; Keeper metadata for the table deleted. Effects: `INSERT` throws, `SELECT` still works. Recover in order: wait for reconnect (`readonly_start_time` tells you how long) → `SYSTEM RESTART REPLICA` → `SYSTEM RESTORE REPLICA` (metadata lost but parts present) → `DETACH TABLE` / `ATTACH TABLE` → `SYSTEM DROP REPLICA` + recreate + resync.
 
 ### What to watch
 

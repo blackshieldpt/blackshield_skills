@@ -17,6 +17,7 @@ type Config struct {
     Prometheus *prometheus.Config  `json:"prometheus"`
     Log        *log.Config         `json:"log"`
     App        *AppConfig          `json:"app"`
+    Auth       *AuthConfig         `json:"auth"`   // JWT keys as secure.KeyConfig, authentication §8.1
 }
 
 func NewConfig() *Config {

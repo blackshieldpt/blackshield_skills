@@ -55,7 +55,7 @@ git rebase origin/<main>               # immediately before the merge, never in 
 git diff origin/<main> -- CHANGELOG.md # after a keep-both conflict: this PR's entry appears once
 <suite command for the touched area>   # <main> may have grown a call site this PR never saw
 git push --force-with-lease
-gh pr checks <PR> --watch              # every check green; a check that never started is not evidence — see testing.md
+gh pr checks <PR> --watch              # every check green. "no checks reported" = no CI: say so in the PR body (testing.md) and ask before merging
 gh pr merge <PR> --<strategy>          # squash, merge, or rebase per the repo's history; ask if unclear
 git switch <main> && git pull          # worktree with <main> checked out elsewhere: git -C <primary> pull
 ```

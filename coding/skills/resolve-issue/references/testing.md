@@ -8,7 +8,7 @@ One row per claim. Fill the base-run columns in phase 3 and the mutation columns
 phase 4. Keep it in a scratchpad file; post it as an issue comment at the end of phase 4
 and give it to the reviewer. A row with an empty column is an unverified claim.
 
-| claim | test file | command | setup (`-s`) | failure at base | hunk reverted | assertion that failed under mutation |
+| claim | test file | command | setup (`-s`) | failure at base | hunk mutated (reverted / altered) | assertion that failed under mutation |
 |---|---|---|---|---|---|---|
 
 A guard from phase 3's falsification step passes at `<base>`; write "passes at base (guard)"

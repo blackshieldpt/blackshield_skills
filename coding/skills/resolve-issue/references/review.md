@@ -22,6 +22,8 @@ Put this in the brief, verbatim, above the inputs:
   for each file from `git ls-files --others --exclude-standard`,
   `git diff --no-index /dev/null <file>`. Never `git add -N` followed by `git reset`;
 - the test files;
+- the findings already open from the review skills run in phase 6, with their mapped
+  severities — they count toward the round rules like the reviewer's own;
 - the evidence table from `testing.md`;
 - the list of framework and library skills to load before reading;
 - the project rules (base-run setup, suite serialisation, conventions);

@@ -213,7 +213,7 @@ per refuter, by subsystem.
 
 ### Prompt template
 
-> You are an adversarial code reviewer. Someone has made <N> claims about a change in a
+> You are an adversarial code reviewer. Someone has reported <N> findings about a change in a
 > repository. Your job is to **try to prove each one WRONG** — overstated, already
 > mitigated, by-design, or factually mistaken. You have no prior context; that is
 > deliberate.

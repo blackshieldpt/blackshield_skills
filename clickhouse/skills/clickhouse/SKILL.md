@@ -1,7 +1,7 @@
 ---
 name: clickhouse
 description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse: MergeTree schema and sorting-key design, partitioning, data types and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, aggregate states, FINAL), EXPLAIN and system.query_log diagnostics, ingestion, insert deduplication, materialized views, merges and too-many-parts, mutations, Distributed tables, replication and Keeper, backup/restore, access control, Cloud vs OSS. Use when writing ClickHouse DDL/SQL, judging ClickHouse SQL for correctness or performance (including when a code review touches ClickHouse), tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations, slow merges, or Keeper/ZooKeeper trouble. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
-version: 1.1.0
+version: 1.1.1
 ---
 
 # ClickHouse Skill
@@ -26,7 +26,8 @@ Reference files, load when the task goes deep:
 ## 0. Live servers
 
 Against a running ClickHouse, run freely: `SELECT` / `SHOW` / `EXPLAIN` / `DESCRIBE`,
-query-scoped `SETTINGS`, session `SET` of query-level settings, and `SYSTEM FLUSH LOGS`.
+query-scoped `SETTINGS`, session `SET` of query-level settings, `SYSTEM FLUSH LOGS`,
+`SYSTEM SYNC REPLICA`, and `KILL ... TEST` (which only lists).
 Anything else — `ALTER` (including `MODIFY SETTING`), `OPTIMIZE`, `KILL`,
 `DROP`/`DETACH`/`ATTACH`, any other `SYSTEM ...`, `INSERT`/`DELETE`/`UPDATE`, server or
 user config file edits (`config.xml`, `users.xml`), and state-changing CLI tools
@@ -201,7 +202,7 @@ See `references/materialized-views.md`.
 | DateTime literal compares differently by client | Bare string parsed in column tz, `toDateTime(s)` in session tz | Pass tz explicitly; store `DateTime('UTC')`; pin `session_timezone` |
 | HTTP 200 with exception in body | Headers sent once streaming starts | `wait_end_of_query=1`; check `X-ClickHouse-Exception-Code` |
 
-About sixty-five, symptom-first, in `references/community-gotchas.md`.
+About sixty, symptom-first, in `references/community-gotchas.md`.
 
 ---
 
