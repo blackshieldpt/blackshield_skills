@@ -26,16 +26,23 @@ Comprehensive guidelines for building Go applications on the [Blueprint framewor
 
 **Path:** `coding/`
 
-General coding workflows. Currently one skill:
+General coding workflows:
 
 - `resolve-issue`: takes a defect or feature from GitHub issue to merged PR. One regression
   test per claim, run against the branch base before the fix and verified by mutation after
   it; a fresh-context adversarial review before the PR opens; loop-prevention rules for
   failed attempts. Requires `gh`. Helper scripts under `skills/resolve-issue/scripts/`;
   run `selftest.sh` after editing them.
+- `file-issue`: turns a description, error, or code location into a GitHub issue in the
+  house style `resolve-issue` consumes. Duplicate check; every claim cited at the callee
+  (`path:line` + quote), trigger proven constructible, executed where cheap; kind/scope/
+  severity labels with scope inferred from the project structure; severity graded by
+  consequence; a fresh-context pass tries to disprove each claim before the user sees the
+  draft; filed with `gh` only after confirmation. Triggers on "open/file/create an issue",
+  "report this bug", "write this up as an issue".
 
-Repo-specific rules for that workflow live in the target repo, not here. A ready-to-copy
-example is in `project-notes/`.
+Repo-specific rules for these workflows (test commands, scope-label vocabulary, house-style
+examples) live in the target repo, not here. A ready-to-copy example is in `project-notes/`.
 
 ### ClickHouse
 

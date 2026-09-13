@@ -1,6 +1,6 @@
 ---
 name: resolve-issue
-description: This skill should be used when the user asks to "fix issue #N", "resolve issue #N", "close issue #N", "implement #N", "fix this bug", "file an issue for this", "open a PR for this change", or "land this change" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh.
+description: This skill should be used when the user asks to "fix issue #N", "resolve issue #N", "close issue #N", "implement #N", "fix this bug", "open a PR for this change", or "land this change" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh.
 version: 0.4.0
 argument-hint: [issue-number | description]
 ---
@@ -92,13 +92,18 @@ EOF
 ```
 
 **Title:** `[severity] <what actually goes wrong, in the user's terms>`, severity one of
-`low` / `medium` / `high` / `critical` (or `feat`). Name the consequence, not `Fix X`. Add
-no labels unless project rules say otherwise.
+`low` / `medium` / `high` / `critical` (or `feat`). Name the consequence, not `Fix X`.
 
-**Body:** prose, not a template. For a defect: how it was found, the mechanism with
-`path:line` for every step of the chain, the wrong code quoted, the blast radius and
-whether it is reversible, and the believed fix plus anything adjacent worth checking.
-Write it as **claims that can be enumerated**; each becomes a test.
+**Labels:** kind (`bug` / `enhancement`), scope (the repo's component labels), severity
+(`severity:<level>`) — one each, scope may be two when the work truly spans components.
+Pick from `gh label list`; never invent one.
+
+**Body:** prose, not a template, in this order: what is wrong with `path:line` and the code
+quoted; the path that reaches it, traced to a caller a deployment runs; what it costs and
+whether it is reversible; which test would have caught it and why it does not; the believed
+fix or the options. State the commit the finding is against. Write it as **claims that can
+be enumerated**; each becomes a test. The `file-issue` skill carries the full rules and
+the severity grading; apply them here.
 
 ## 2. The branch
 
