@@ -1,7 +1,7 @@
 ---
 name: resolve-issue
 description: "This skill should be used when the user asks to \"fix issue N\", \"resolve issue N\", \"address issue N\", \"implement issue N\", \"open a PR for issue N\", or \"land this change\" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh. Not for ad-hoc fixes with no issue and no request to land them; for those, work normally. \"Close issue N\" without a fix is a one-step close, confirmed first."
-version: 0.9.0
+version: 0.10.0
 argument-hint: "[issue-number | branch | description]"
 ---
 
@@ -54,7 +54,8 @@ won't-fix/duplicate/already-fixed close; the latter is `gh issue close <N> --com
 after the comment has been shown and the user has said yes, and ends there. "Fix",
 "resolve", "address", "implement", "land", or "open a PR" authorises the whole path to an
 open PR: drafting
-the issue, drafting separate issues for pre-existing defects found on the way, pushing the
+the issue, drafting separate issues for pre-existing defects found on the way (every one
+through `file-issue`, whichever phase surfaced it), pushing the
 branch and opening the PR — the PR is opened without a further prompt, and its body is
 shown in the report. Every `gh issue create` still shows title, labels and body and waits
 for an explicit yes (the `file-issue` rule). The PR body carries `Closes #<N>`. Merging
@@ -314,9 +315,12 @@ inputs, constraints and round rules in `references/review.md`.
 
 Fix the findings before the PR opens, re-run mutation for every hunk that changed, and
 update the table. A finding judged wrong is answered in the PR's Review section with the
-reason, not fixed. What belongs in another change gets its own issue, named in the PR
-body. After the last round, run the full suites once more; the Verification section
-reports that run. Never run a skill that edits the tree after the adversarial round.
+reason, not fixed. What belongs in another change gets its own issue through
+`file-issue` — never a bare `gh issue create` — and is named in the PR body. A review
+finding is a lead, not a verified claim; it has had no disproof pass.
+
+After the last round, run the full suites once more; the Verification section reports that
+run. Never run a skill that edits the tree after the adversarial round.
 
 ## 7. PR, then merge
 

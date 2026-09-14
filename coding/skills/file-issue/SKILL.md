@@ -1,7 +1,7 @@
 ---
 name: file-issue
 description: "This skill should be used when the user asks to \"open an issue\", \"file an issue\", \"create an issue\", \"report this bug\", \"write this up as an issue\", or \"track this as an issue\" on a GitHub repository. It investigates enough to name the mechanism, checks for duplicates, writes the issue as enumerable claims in the house style the resolve-issue skill consumes, has a fresh-context pass try to disprove every claim against the code, and files it with gh after the user confirms the text. Requires gh."
-version: 0.4.0
+version: 0.5.0
 argument-hint: "[description | path:line | error text]"
 ---
 
@@ -86,8 +86,19 @@ so the subagent gets a clean tree.
 **Verify the premises here, not after filing.** The one mistake behind most re-scoped
 issues is asserting what a function does from its shape or name instead of reading the
 callee: `x == nil` read as "no store" without opening the constructor, "returns 401"
-without opening the handler, "duplicate rows" without checking the table engine. Four
-rules, applied to every claim:
+without opening the handler, "duplicate rows" without checking the table engine.
+
+**Sort each premise before verifying it. Reading code settles only the first kind:**
+
+| kind | settle it by |
+|---|---|
+| code-internal | reading the callee |
+| executable | running it |
+| external — anything outside this repo: another program's behaviour, an operator's workflow, a deployment practice | measuring it, or asking the user a yes/no question |
+
+An external premise is never filed as an assumption. Settle it or do not file.
+
+Four rules for the other two kinds, applied to every claim:
 
 1. **Cite the callee, not the caller.** Every claim gets a `path:line` and a quote of the
    code where it actually happens. No citation, no claim. Watch the "nil means" class
@@ -96,6 +107,10 @@ rules, applied to every claim:
    the endpoint, config combination, flag, or state transition — and cite that too.
    Absence of a prohibition is not permission; a status gate nobody looked for kills the
    claim.
+
+   Then show it OCCURS, which is a separate question. Evidence is one of: a log line
+   seen, a config in this repo, a deploy or runbook step, a test, the user's yes.
+   "Nothing prevents it" is not evidence — no evidence means no severity label.
 3. **Execute rather than reason where you can.** "Does this return nil or an error?" is a
    ten-line test against the existing harness — written and run in the scratchpad
    worktree, never in the checkout — and it settles in seconds what a paragraph of
@@ -170,6 +185,9 @@ mapping); regrade only on new evidence.
 Two things that are *not* severity: how many places the defect appears, and whether a
 test exists. Say both in the body instead.
 
+**No `severity:` label until rule 2's evidence exists.** Instead, one line under the lead
+saying what would settle it.
+
 **Body.** State the defect, then prove it. Prose under a **bold lead-in per item** (no `#` headings), executed results as a table or fenced block, citations and test lists as bullets — readable on the GitHub page without scrolling back. In this order:
 
 1. **What is wrong**, in one sentence, with the `path:line` it lives at, the code
@@ -212,7 +230,12 @@ different HEAD makes every citation wrong), and these instructions verbatim:
 - For every claim, open the callee it rests on and quote `path:line`. A claim whose
   citation points at a caller, a name, or a comment is unproven.
 - For the triggering condition, find the code that permits it. Absence of a prohibition
-  is not permission.
+  is not permission. Then say separately whether the draft evidences that a deployment
+  actually enters that state, and what that evidence is; "nothing prevents it" is not
+  evidence and makes the claim `unverifiable`, not `proven`.
+- Flag any premise the repository cannot settle — another program's behaviour, an
+  operator's workflow, a deployment practice. Report it as `external` with what would
+  settle it, rather than reasoning about it from the code.
 - Where a claim can be executed (a unit test against the existing harness, a one-off
   query), run it and report the output.
 - For a bug, open the test named under coverage and confirm it does or does not assert
@@ -220,14 +243,32 @@ different HEAD makes every citation wrong), and these instructions verbatim:
 - For a **feature**, the claims describe absent behaviour: prove instead that the
   behaviour is absent at the cited location and that today's behaviour is as the draft
   states; an acceptance claim is `proven` when both hold.
-- Return one line per claim: `proven` with citation, `disproven` with citation, or
-  `unverifiable` with what is missing. Then the severity it would assign and why.
+- Check the headline consequence separately from the claims: all claims can be true and
+  the consequence still false. It is `observed` only if the body carries a command and
+  its output showing that consequence happening — not the mechanism behind it. Anything
+  else is `inferred`. Do not weigh how convincing the reasoning is; look for the block.
 - The CONSTRAINTS block from §2, verbatim.
 
-Act on the result: drop or rewrite every `disproven` claim; either prove or remove every
-`unverifiable` one; regrade severity if the surviving claims change it. If nothing
-survives, tell the user there is no issue to file and why. Repeat the check once if the
-body changed materially.
+Return, in this order:
+
+- one line per claim: `proven` + citation, `disproven` + citation, `external` + what
+  settles it, or `unverifiable` + what is missing;
+- trigger: the evidence it occurs, or `none`;
+- consequence: `observed` + how, or `inferred`;
+- severity it would assign, and why.
+
+Act on the result:
+
+| verdict | action |
+|---|---|
+| `disproven` claim | drop or rewrite it |
+| `unverifiable` claim | prove it or remove it |
+| `external` claim | measure it, or ask the user; quote the answer |
+| trigger `none` | file without a `severity:` label, stating the open question |
+| consequence `inferred` | produce the command and output, or file without a `severity:` label, stating the open question |
+
+Regrade severity if the surviving claims change it. If nothing survives, tell the user
+there is no issue to file and why. Repeat the check once if the body changed materially.
 
 ## 5. Confirm and file
 
