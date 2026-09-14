@@ -100,7 +100,7 @@ Install from this directory as a marketplace:
 
 Each plugin carries a trigger eval suite under `<plugin>/evals/` (does the right skill
 fire, and stay silent, for representative prompts). Run one with
-`claude plugin eval <plugin> --no-publish --trust-plugin` from this directory; a full
+`claude plugin eval ./<plugin> --no-publish --trust-plugin` from this directory (the path form — a bare plugin name resolves to the installed cache copy, which carries no evals); a full
 suite is 12 cases × 2 runs × 2 arms at roughly $0.10 a run, so use `--case <glob>` or
 `--runs 1` when iterating. Results land in `<plugin>/evals/results/` (ignored).
 
