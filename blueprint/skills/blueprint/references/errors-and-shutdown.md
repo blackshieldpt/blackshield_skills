@@ -58,13 +58,28 @@ if entity == nil { response.Http404(g); return }
 `blueprint.RegisterDestructor(fn)`. Destructors run in **LIFO order** (last registered runs first) — register in **reverse order** of the desired shutdown sequence:
 
 ```go
-blueprint.RegisterDestructor(func() error { return pool.Stop(app.Context) }) // pool: registered FIRST, runs LAST
-blueprint.RegisterDestructor(func() error { consumer.Close(); return nil })  // consumer: registered SECOND, runs SECOND
-blueprint.RegisterDestructor(func() error {                                  // API: registered LAST, runs FIRST
-    ctx, cancel := context.WithTimeout(app.Context, 1*time.Second)
-    defer cancel()
-    return server.Shutdown(ctx)
+blueprint.RegisterDestructor(func() error { return pool.Stop(blueprint.ShutdownContext()) }) // pool: registered FIRST, runs LAST
+blueprint.RegisterDestructor(func() error { consumer.Close(); return nil })                  // consumer: registered SECOND, runs SECOND
+blueprint.RegisterDestructor(func() error {                                                  // API: registered LAST, runs FIRST
+    return server.Shutdown(blueprint.ShutdownContext())
 })
+```
+
+**Never pass `app.Context` / `GetContext()` (or a context derived from it) to a destructor's
+`Shutdown`/`Stop`.** On a signal, `Run` cancels it before the destructors run, so
+`server.Shutdown` returns `context.Canceled` at once and requests in flight are dropped. On
+`AbortFatal` it is live with no deadline, so `Shutdown` waits for the slowest request.
+
+`blueprint.ShutdownContext()` has one deadline, counted from the start of `Shutdown` and shared by
+all destructors. The default is 5s; change it with `blueprint.SetShutdownTimeout(d)`, and keep it
+below the orchestrator's grace period (`docker stop`: 10s). It exists in core releases after v0.15.0
+(oddbit-project/blueprint#145). If `go.mod` pins core v0.15.0 or earlier, use a fresh context
+instead:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+return server.Shutdown(ctx)
 ```
 
 ### 10.2 Goroutine Launchers

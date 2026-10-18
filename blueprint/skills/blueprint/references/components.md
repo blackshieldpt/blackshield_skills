@@ -76,7 +76,7 @@ func WorkerFactory(a *blueprint.Container, cfg *worker.Config, logger *log.Logge
     proc, err := worker.NewWorkerPool(cfg, logger)
     a.AbortFatal(err)
     a.AbortFatal(proc.Start(a.Context))
-    blueprint.RegisterDestructor(func() error { proc.Stop(a.Context); return nil })
+    blueprint.RegisterDestructor(func() error { return proc.Stop(blueprint.ShutdownContext()) }) // not a.Context: cancelled by then
     return proc
 }
 ```
