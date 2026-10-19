@@ -1,6 +1,6 @@
 # Second implementation attempt
 
-Dispatch a fresh subagent (`general-purpose`, no `model` override). Subagents cannot ask
+Dispatch a fresh subagent (`general-purpose`, `model: opus`). Subagents cannot ask
 the user, so the brief is complete or the attempt is not started. Put the following in the
 brief, in this order.
 

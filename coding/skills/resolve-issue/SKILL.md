@@ -95,9 +95,11 @@ available skill that matches. Record the list in the plan comment and pass it to
 subagent.
 
 **Subagents.** The adversarial reviewer and the second-attempt implementer are
-`general-purpose`, never a `fork`, with `model` omitted. Read-only fan-out (call-site
+`general-purpose`, never a `fork`, with `model: opus` set explicitly (an omitted model
+inherits the session's, which may be a cheaper one). Read-only fan-out (call-site
 sweeps, searching docs for an old name, listing tests that touch an area) runs on
-`Explore` with `model: sonnet`, or `haiku` for pure text search. Every brief carries the
+`Explore` with `model: haiku`, or `sonnet` when the sweep must judge what code does
+rather than find where it is. Every brief carries the
 untrusted-content boundary, the redaction rule, "do not spawn subagents", and "no `gh`
 writes". Spawn no other subagents except the review skills named in phase 6.
 
@@ -310,7 +312,7 @@ with `--fix`, `--comment`, `--post`, or `ultra`. They dispatch their own subagen
 Setup allows. Their findings enter round one with Impact mapped to severity per the
 `review` skill's handoff rule (HIGH with data loss / security → `critical`, other HIGH →
 `high`, MED → `medium`, LOW → `low`). Then dispatch a fresh-context subagent (`Agent`,
-`subagent_type: general-purpose`, not a `fork`, no `model` override) with the brief,
+`subagent_type: general-purpose`, not a `fork`, `model: opus`) with the brief,
 inputs, constraints and round rules in `references/review.md`.
 
 Fix the findings before the PR opens, re-run mutation for every hunk that changed, and

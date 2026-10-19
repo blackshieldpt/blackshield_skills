@@ -1,6 +1,6 @@
 # Adversarial review brief
 
-Use a fresh-context subagent (`general-purpose`, no `model` override), never a `fork`: a
+Use a fresh-context subagent (`general-purpose`, `model: opus`), never a `fork`: a
 fork inherits the reasoning that wrote the code. `$S`, `<base>` and `<main>` are defined
 in SKILL.md Setup; pass their values in the brief. Tell the reviewer not to spawn
 subagents.

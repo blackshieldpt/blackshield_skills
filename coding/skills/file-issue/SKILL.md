@@ -64,7 +64,7 @@ An issue that names only a symptom is not fileable. Before drafting, establish:
 - **Adjacent risk.** Other call sites, branches, or configs with the same shape.
 
 Read-only fan-out (call-site sweeps, log searches) may use `Explore` subagents with
-`model: sonnet`; every subagent brief carries the constraints block below verbatim. The
+`model: haiku` (`sonnet` when the sweep must judge what code does); every subagent brief carries the constraints block below verbatim. The
 only other subagent is the adversarial check in §4. Never change the checkout and never
 create a branch in it. Anything that must be written or run — a throwaway test, a base
 run, a clean tree at the reported commit — happens in a **scratchpad worktree**
@@ -218,7 +218,7 @@ Match the repo's existing issues in tone and length: read two recent ones first
 ## 4. Adversarial check of the draft
 
 Before the user sees it, hand the draft to a **fresh-context** subagent (`general-purpose`,
-no `model` override, never a `fork`) whose brief is: *assume the issue is wrong until the
+`model: opus`, never a `fork`) whose brief is: *assume the issue is wrong until the
 code proves each claim*. This pass is what catches what ordinary re-reading does
 not — including in the author's own reasoning — and it is cheaper before filing than after
 a re-scope.

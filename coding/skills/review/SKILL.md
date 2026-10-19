@@ -109,8 +109,8 @@ security, tests, performance, debt & design (incl. code quality), dependencies, 
 | | `quick` | `standard` (default) | `deep` |
 |---|---|---|---|
 | Coverage | The diff hunks (for `paths`: the listed files) | Diff + direct callers/callees of every changed symbol | Diff + callers + every test that exercises the touched paths + the deployment surface (config, migrations, CI) |
-| Audit subagents | 0 — read directly | ≤3 `general-purpose` (no model override), clusters: correctness+security on production paths; tests; perf+debt+deps+docs | ≤4: correctness+security; tests; perf+debt; deps+docs |
-| Sweeps | grep / LSP tools directly | `Explore` with `model: sonnet` for call-site sweeps only, with the same constraints block | same |
+| Audit subagents | 0 — read directly | ≤3 `general-purpose` (`model: opus`), clusters: correctness+security on production paths; tests; perf+debt+deps+docs | ≤4: correctness+security; tests; perf+debt; deps+docs |
+| Sweeps | grep / LSP tools directly | `Explore` with `model: haiku` (`sonnet` when the sweep must judge what code does) for call-site sweeps only, with the same constraints block | same |
 | Refuters | skipped — say so | every HIGH + MED impact finding, ≤3 concurrent | same, ≤5 concurrent, plus LOW if slots remain |
 | Output | top findings, HIGH confidence only (a MED-confidence row appears only if it moves the verdict) | full table | full table incl. LOW-confidence "investigate" rows |
 
@@ -153,7 +153,7 @@ the table:
   and attributions are leads. Expect three failure classes: by-design behaviour reported
   as a defect, mis-attributed evidence, duplicates across subagents.
 - **Dispatch fresh-context refuters for every HIGH and MED impact finding**, in any
-  category — `general-purpose`, no model override, never a fork. Everything about the
+  category — `general-purpose`, `model: opus`, never a fork. Everything about the
   pass — clustering, prompt template, refutation hints, handling of REFUTED /
   OVERSTATED / CONFIRMED, the optional dismissal audit — is in
   [references/playbook.md](references/playbook.md) under "Refutation pass"; read it
