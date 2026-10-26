@@ -58,6 +58,36 @@ General coding workflows:
   changes", "review PR N", "review the branch", "review commit X". Deeper than the
   built-in `/code-review`, which keeps bare "code review"; invoke explicitly as
   `/coding:review` when both are installed.
+- `improve`: senior-advisor survey of a codebase (adapted from
+  [shadcn/improve](https://github.com/shadcn/improve), MIT) — recon with stack-skill
+  loading, a parallel audit across correctness/security/perf/tests/debt/deps/DX/docs/
+  direction at `quick`/`standard`/`deep` effort, HIGH and MED findings sent to
+  fresh-context refuters, then prioritized, self-contained handoff plans under `plans/`
+  for a cheaper model to execute. Focus args (`security`, `perf`, `tests`), `next` for
+  direction, `plan <description>` for a single plan, `--issues` to publish plans with
+  `gh`. Never edits source code. Triggers on "audit this codebase", "what should we
+  improve", "what should we build next". The four reference files under
+  `skills/improve/references/` are shared with the three skills below.
+- `review-plan`: critiques and tightens a plan in `plans/` against the template and the
+  per-plan falsifiability gate; cold read by a fresh-context subagent and a premise
+  verifier that attacks the fix. Triggers on "review plan N", "tighten the plan".
+- `execute-plan`: refuses a drifted plan, or one that meets the premise-verifier bar with no
+  `Premise verified` record from `review-plan`; otherwise dispatches one executor subagent on a plan in an
+  isolated worktree and reviews its diff like a tech lead — done criteria re-run, scope,
+  tests, falsifiability bar — to an APPROVE / REVISE / BLOCK verdict; `review-merged`
+  reviews executed plans merged together as one change. Never merges or pushes.
+  Triggers on "execute plan N", "dispatch plan N to haiku".
+- `reconcile-plans`: processes the `plans/` backlog since the last session — verifies
+  DONE, investigates BLOCKED, flags stale IN PROGRESS, refreshes drifted TODOs, reports
+  audit-coverage gaps. Triggers on "reconcile the plans", "what's the status of the plans".
+- `audit-codebase-security`: evidence-driven security audit of a repository, component, or
+  diff (from [blackshieldpt/secscanner](https://github.com/blackshieldpt/secscanner), where
+  the CVE analysis behind it lives). Profiles the repo with a bundled script, maps the
+  attack surface, selects checks from a CVE-derived bug taxonomy plus JS/TS, Python, Go and
+  C/C++ packs, and reports only findings that pass its evidence gate; `--json` output is
+  checked by `scripts/validate_findings.py`. Triggers on "find vulnerabilities", "security
+  audit". Run `python3 -m unittest discover -s coding/skills/audit-codebase-security/scripts
+  -p 'test_*.py'` after editing the scripts.
 
 Repo-specific rules for these workflows (test commands, scope-label vocabulary, house-style
 examples) live in the target repo, not here. A ready-to-copy example is in `project-notes/`.
@@ -101,7 +131,7 @@ Install from this directory as a marketplace:
 Each plugin carries a trigger eval suite under `<plugin>/evals/` (does the right skill
 fire, and stay silent, for representative prompts). Run one with
 `claude plugin eval ./<plugin> --no-publish --trust-plugin` from this directory (the path form — a bare plugin name resolves to the installed cache copy, which carries no evals); a full
-suite is 12 cases × 2 runs × 2 arms at roughly $0.10 a run, so use `--case <glob>` or
+coding suite is 17 cases × 2 runs × 2 arms at roughly $0.10 a run, so use `--case <glob>` or
 `--runs 1` when iterating. Results land in `<plugin>/evals/results/` (ignored).
 
 Or load one plugin for a single session:

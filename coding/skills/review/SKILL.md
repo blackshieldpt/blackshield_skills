@@ -1,7 +1,7 @@
 ---
 name: review
-description: "This skill should be used when the user asks for a review of code changes — a diff, branch, PR, commit, or files under version control — in a git repository: \"review my changes\", \"review the branch\", \"review the diff\", \"review PR N\", \"review this PR\", \"look this over before I open a PR\", or \"review commit X\"; also invoked by resolve-issue as `review quick issue N`. It is the deep, refutation-vetted review — a read-only audit across correctness, security, tests, performance, debt, dependencies and docs, every finding opened at the cited line, HIGH and MED findings sent to fresh-context refuters, and a ranked findings table with an APPROVE / REVISE / BLOCK verdict. It never edits code. Not for reviewing documents, plans, prose, or a snippet pasted in chat; a bare \"code review\" or a quick bug pass is the built-in /code-review, the lighter tool. Requires git; gh for PR targets."
-version: 0.6.0
+description: "This skill should be used when the user asks for a review of code changes — a diff, branch, PR, commit, or files under version control — in a git repository: \"review my changes\", \"review the branch\", \"review the diff\", \"review PR N\", \"review this PR\", \"look this over before I open a PR\", or \"review commit X\"; also invoked by resolve-issue as `review quick issue N`. It is the deep, refutation-vetted review — a read-only audit across correctness, security, tests, performance, debt, dependencies and docs, every finding opened at the cited line, HIGH and MED findings sent to fresh-context refuters, and a ranked findings table with an APPROVE / REVISE / BLOCK verdict. It never edits code. Not for reviewing documents, plans (a handoff plan under plans/ is coding:review-plan), prose, or a snippet pasted in chat; a bare \"code review\" or a quick bug pass is the built-in /code-review, the lighter tool. Requires git; gh for PR targets."
+version: 0.6.1
 argument-hint: "[PR number | commit | A..B | paths] [issue N] [quick | deep] [security | tests | perf] [--comment]"
 ---
 
@@ -64,7 +64,7 @@ Resolve exactly what is under review before reading anything else.
 | paths | Those files in the working tree (`<sha>+dirty` when dirty) and their direct callers; base is the merge-base with `<remote>/<default>` (used only for Rule 4). There is no diff, so findings carry no `introduced`/`pre-existing` tag; the report has a single table titled "Findings" and every row counts for the verdict. |
 
 If the scope is empty (clean tree on the default branch, PR with no diff), say so and
-offer a full audit instead (via `improve` if that skill is installed). Record the commit every finding is against:
+offer a full audit instead (via `coding:improve`). Record the commit every finding is against:
 `git rev-parse --short HEAD` (suffixed `+dirty` when the tree is not clean) for the
 bare and `paths` scopes, `headRefOid` for a PR, `X` for a commit, `B` for a range.
 

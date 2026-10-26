@@ -20,3 +20,10 @@ graders:
     min: 0
     max: 0
     arm: both
+  - name: "does-not-fire-improve"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?improve"'
+    min: 0
+    max: 0
+    arm: both

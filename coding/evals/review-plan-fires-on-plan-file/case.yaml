@@ -1,0 +1,43 @@
+schema_version: "1.1"
+name: "review-plan-fires-on-plan-file"
+tags: [trigger, review-plan]
+runs: 2
+execution:
+  max_turns: 4
+  timeout_seconds: 180
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: "fires-review-plan"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?review-plan"'
+    min: 1
+    arm: both
+  - name: "does-not-fire-review"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?review"'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-fire-execute-plan"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?execute-plan"'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-fire-code-review"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?code-review"'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-fire-improve"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?improve"'
+    min: 0
+    max: 0
+    arm: both

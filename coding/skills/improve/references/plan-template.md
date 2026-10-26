@@ -1,0 +1,440 @@
+# Handoff Plan Template
+
+Every plan is written for an executor model that has **zero context**: it has not seen the advisor session, the audit, the other plans, or any prior conversation. It may be a smaller/cheaper model. Assume it is competent at following explicit instructions and weak at filling gaps, recovering from ambiguity, or knowing when to stop.
+
+Three properties make a plan executable by a weaker model:
+
+1. **Self-contained context** — everything needed is in the file: paths, code excerpts, conventions, commands.
+2. **Verification gates** — every step ends with a command and its expected result. The executor never has to *judge* whether it succeeded.
+3. **Hard boundaries and escape hatches** — explicit out-of-scope list, and "STOP and report" conditions instead of letting the model improvise when reality doesn't match the plan.
+
+File naming: `plans/NNN-short-slug.md`, numbered in recommended execution order.
+
+**The worked example below is one repo's instance, not a form to copy.** It happens
+to be a TypeScript service using pnpm, because a template with placeholder strings
+teaches nothing. **The structure is fixed; every path, command, filename, and tool
+name is replaced with the audited repo's own** — verified during recon, never
+guessed and never carried over from this file. A plan whose command table says
+`pnpm test` for a Go repo fails on its first gate, and a weak executor will try to
+make it work rather than stop.
+
+Rough shape of the substitutions, to make the point concrete:
+
+| Template says | Go | Python | Rust | Java | Ruby |
+|---|---|---|---|---|---|
+| `pnpm install` | `go mod download` | `uv sync` / `pip install -e .` | `cargo fetch` | `mvn -q dependency:go-offline` | `bundle install` |
+| `pnpm typecheck` | `go vet ./...` / `go build ./...` | `mypy .` | `cargo clippy -- -D warnings` | `mvn -q compile` | `srb tc` (or none) |
+| `pnpm test -- <filter>` | `go test ./pkg/... -run X` | `pytest -k X` | `cargo test X` | `mvn -q test -Dtest=X` | `bundle exec rspec path` |
+| `pnpm lint` | `golangci-lint run` | `ruff check .` | `cargo fmt --check` | `mvn -q spotless:check` | `rubocop` |
+| `src/orders/api.ts` | `internal/orders/api.go` | `orders/api.py` | `src/orders/api.rs` | `.../orders/Api.java` | `app/orders/api.rb` |
+
+Not every repo has every row. Omit what doesn't exist rather than inventing it —
+and if there's no static check or no test command at all, that's a finding for the
+audit and a prerequisite plan, not a gap to paper over here.
+
+**Plans directory.** This file writes `plans/` throughout. If the advisor chose
+`advisor-plans/` instead (because `plans/` was already taken for an unrelated
+purpose), substitute that path **everywhere** — the executor instructions, the
+done criteria, the index heading, and every cross-reference in every plan you
+write. A plan that points its executor at a directory that doesn't exist is
+broken.
+
+---
+
+## Template
+
+```markdown
+# Plan NNN: <Imperative title — what will be true after this plan>
+
+> **Executor instructions**: Follow this plan step by step. Run every
+> verification command and confirm the expected result before moving to the
+> next step. If anything in the "STOP conditions" section occurs, stop and
+> report — do not improvise. When done, update the status row for this plan
+> in `plans/README.md` — unless a reviewer dispatched you and told you they
+> maintain the index. If you were dispatched by a reviewer, or the index lives
+> in a checkout you cannot write to, skip it and say so in your report.
+>
+> **Drift check (run first)**: `git diff --stat <planned-at SHA>..HEAD -- <in-scope paths>`
+> **This is empty whenever you were branched at the planned-at SHA — which a
+> dispatched executor normally is, so an empty result proves nothing.** The
+> substantive check is the next sentence: read the "Current state" excerpts
+> against the live files yourself. Do that whether or not the diff is empty.
+> If any in-scope file changed since this plan was written, compare the
+> "Current state" excerpts against the live code before proceeding; on a
+> mismatch, treat it as a STOP condition.
+
+## Status
+
+- **Priority**: P1 | P2 | P3 — thirds of the leverage ordering from the audit playbook's prioritization rubric: P1 = top third, P2 = middle, P3 = rest. Leverage, not severity: a MEDIUM-impact one-line fix outranks a HIGH-impact rewrite
+- **Effort**: S | M | L
+- **Risk**: LOW | MED | HIGH
+- **Depends on**: plans/NNN-*.md (or "none")
+- **Category**: bug | security | perf | tests | tech-debt | migration | dx | docs | direction
+- **Planned at**: commit `<short SHA>`, <YYYY-MM-DD>
+- **Issue**: <GitHub issue URL — only when published via `--issues`; omit otherwise>
+- **Premise verified**: `pending` when written. Only `coding:review-plan` replaces it (except at `quick`, where `coding:improve` writes `skipped at quick`), with `<YYYY-MM-DD>, by coding:review-plan`, `skipped at quick`, or `n/a — below the bar`. Any rewrite of the plan's Current state, Scope, or Steps — a reconcile refresh, a refinement after BLOCK — resets it to `pending`. For a plan that meets the premise-verifier bar, `coding:execute-plan` dispatches only on a dated `by coding:review-plan` or `skipped at quick`, and re-judges an `n/a` against the bar
+
+## Why this matters
+
+2–5 sentences. The problem, its concrete cost, and what improves when this
+lands. Written so the executor (and a human reviewer) understands the intent —
+intent is what lets a correct judgment call happen when a detail is off.
+
+## Current state
+
+The facts the executor needs, inlined — never "as discussed" or "see audit":
+
+- The relevant files, each with one line on its role:
+  - `src/orders/api.ts` — order-list endpoint; contains the N+1 (lines 130–160)
+- Excerpts of the code as it exists today (short, with `file:line` markers),
+  enough that the executor can confirm it's looking at the right thing.
+- The repo conventions that apply here, with a pointer to one exemplar file:
+  "Error handling follows the Result pattern — see `src/lib/result.ts` and its
+  use in `src/users/api.ts:40-60`. Match it."
+- Any documented vocabulary or design constraints the plan must honor, inlined
+  from the intent/design docs found in recon: the relevant `CONTEXT.md` terms
+  the executor should use in names and comments, the `DESIGN.md` tokens/components
+  to reuse, or the ADR whose decision this work must stay consistent with. Quote
+  the specific lines — the executor has not read those docs.
+
+## Commands you will need
+
+| Purpose            | Command                  | Expected on success |
+|--------------------|--------------------------|---------------------|
+| Install / restore  | `pnpm install`           | exit 0              |
+| Static check       | `pnpm typecheck`         | exit 0, no errors   |
+| Tests (scoped)     | `pnpm test -- <filter>`  | all pass            |
+| Tests (full suite) | `pnpm test`              | all pass            |
+| Lint / format      | `pnpm lint`              | exit 0              |
+
+(This repo's exact commands, verified during recon — not guessed, and not carried
+over from the template. Drop rows the repo doesn't have. Note anything that needs
+setup a fresh worktree lacks: a build before checks resolve, a container for
+integration tests, a seeded database.)
+
+## Suggested executor toolkit
+
+(Optional. Fill this from the stack-matching skills recon actually found and
+loaded — not from a guess about what might be installed. Skip the section when
+recon found none.)
+
+- Skills the executor should invoke, and for what — naming the actual skill recon
+  loaded for this stack, e.g. "use the `<orm-name>` skill when rewriting the query
+  in step 2" or "use the `<framework>` best-practices skill for the caching in
+  step 3". If a skill informed a finding or a step here, name it: the executor is
+  a weaker model and needs the same capability you had when you specified the work.
+- Reference docs worth reading before starting, by path or URL.
+
+## Scope
+
+**In scope** (the only files you should modify):
+- `src/orders/api.ts`
+- `src/orders/api.test.ts` (create)
+
+**Out of scope** (do NOT touch, even though they look related):
+- `src/orders/legacy-api.ts` — deprecated path, scheduled for deletion;
+  changing it wastes effort and risks the v1 clients still pinned to it.
+- Any change to the public response shape — clients depend on it.
+
+## Git workflow
+
+(Filled from recon — match the repo's observed conventions.)
+
+- Branch: `advisor/NNN-<slug>` (or the repo's branch-naming convention if one is evident)
+- Commit per step or per logical unit; message style: <match repo, e.g. conventional commits — include an example from `git log`>
+- Do NOT push or open a PR unless the operator instructed it.
+
+## Steps
+
+### Step 1: <imperative title>
+
+What to do, precisely. Reference exact files/symbols. Include the target code
+shape when it's load-bearing (the pattern to produce, not necessarily every
+line).
+
+**Verify**: `<command>` → <expected output>
+
+### Step 2: ...
+
+(Each step small enough to verify independently. Order steps so the codebase
+is never broken between steps when possible — e.g. add new path, switch
+callers, then remove old path.)
+
+## Test plan & coverage
+
+Required in every plan — including refactors, migrations, and docs changes, where
+the answer may legitimately be "the existing suite covers this, and here is the
+command that proves it".
+
+- **Cases to cover, named individually**: the happy path, the specific
+  bug/regression this plan addresses, and each edge case by name. "Add tests for
+  the new function" is not a test plan.
+- **The layer each case belongs at** — unit, integration, or e2e — choosing the
+  cheapest layer that can actually catch the defect (see §4 of the audit
+  playbook). Say which. Without a layer named, an executor writes whatever is
+  easiest, which is usually a unit test mocking the thing that actually broke.
+- **For a bug or regression fix, the test must be seen failing first**: state it as
+  a criterion — `<test command>` fails at `<planned-at SHA>` with `<the specific
+  failure>`, and passes after the change. A test written after the fix and never
+  observed to fail proves nothing about the bug it claims to cover.
+- **Structural exemplar**: "model after `src/users/api.test.ts`" — match the
+  repo's existing test idiom (setup, fixtures, naming, assertion style) rather
+  than importing one.
+- **Coverage bar for the changed code**, stated as behaviour and not a
+  percentage: which new or changed branches must be exercised, including the
+  error paths.
+- **What these tests deliberately do not cover**, and why — so the reviewer isn't
+  left guessing whether a gap is an oversight or a decision. Be careful here: this
+  section exists to separate an oversight from a decision, so a *decision* written
+  into it still has to be a good one. An untested interaction that is the riskiest
+  thing in the change does not become acceptable by being listed.
+- **Verification**: `<test command>` → all pass, including the N new tests.
+
+### Falsifiability bar
+
+**Required.** A green suite proves nothing by itself — a test that cannot fail
+passes for exactly the same reason a correct one does. Every plan states, as a
+table, what must break when the work is removed:
+
+| Delete / revert this | This test must fail | Observed failure (goes in the executor's report) |
+|---|---|---|
+| `the specific guard, line-referenced` | `TestName` | |
+| `the specific call the fix adds` | `TestName` | |
+
+Rules that make it real rather than ceremonial:
+
+- **One row per behaviour the plan claims to establish.** If the plan adds a
+  guard, a validation, and a call, that is three rows.
+- **Commit your work BEFORE running the bar, then revert with `git checkout --`.**
+  Reverting a mutation in a file that also holds uncommitted work destroys that
+  work — `git checkout -- <file>` restores the whole file from HEAD, not just the
+  hunk you mutated. This has bitten real executions twice. Either commit first
+  (preferred — then `git checkout --` is exact), or copy the file aside and
+  restore from the copy. Verify with `git diff --exit-code <file>` either way,
+  and re-run the test suite after restoring to prove the work survived.
+- **The executor must perform each deletion, run the test, capture the actual
+  failure output, and restore.** Not "confirmed" — the output. This is a done
+  criterion, and the output goes in the executor's **report**: the third column
+  stays empty in the plan file, which the executor works from as text or as a
+  read-only path and cannot write to.
+- **The deletion must leave the code compiling.** A row that fails to build tests
+  the compiler, not the test. Prefer neutering the behaviour (make the guard's
+  branch unreachable, drop the option from the call) over deleting a symbol other
+  code references.
+- **Prefer reverting to the pre-fix behaviour over deleting outright** — that is
+  what a regression actually looks like, and it produces a clean assertion failure
+  instead of an incidental panic.
+- **A row nobody can make fail is the finding**, not a formality to wave through:
+  that test asserts nothing and the plan is not done. Say so plainly rather than
+  quietly dropping the row.
+- **Watch for guards that shadow each other.** If an earlier check in the same
+  handler rejects the request with an identical response, a later test can pass
+  without ever reaching the code it names. When a plan adds a guard to a path that
+  already has one, add a row proving the *later* control is still reachable.
+
+For a test double or fixture the plan introduces, the same bar applies to the
+double itself: if deleting the thing the double is supposed to verify leaves every
+test green, the double is inert and the coverage is imaginary.
+
+#### Check every row before the plan leaves your hands
+
+The rules above are read once and then violated across a long planning session —
+the advisor writes plan after plan and drifts from them. So this is not a prologue
+to absorb; it is a **per-plan gate**. Before finalizing *each* plan, walk its
+table row by row and answer these seven in writing to yourself. A row that cannot
+survive all seven is not ready to hand to an executor.
+
+1. **Does the mutation compile?** Removing a condition often orphans the variable
+   that fed it (`if n == 0` → `if false` leaves `n` declared and unused). Mentally
+   compile it. If it wouldn't build, the row tests the compiler.
+2. **Does it mutate the SUBJECT, not the assertion?** "Restore the old assertion
+   and watch it fail" is circular whenever the old assertion was the defect — a
+   tautology cannot fail. Mutate the code under test, never the test.
+3. **Is the named test actually reachable after the mutation?** An earlier guard
+   on the same path can absorb it and the test stays green — the classic case is
+   two flags where either alone produces the same rejection (`O_EXCL` and
+   `O_NOFOLLOW` both yield `EEXIST` on a symlinked path, so removing one changes
+   nothing observable).
+4. **Does the `-run` pattern match the test you named?** An unanchored regexp that
+   matches nothing prints `no tests to run` and **exits 0**, so the gate passes
+   having run nothing. Check the pattern against the real test name.
+5. **Would it fail for the row's stated reason, or incidentally?** A nil
+   dereference or build error where the assertion should be means the crash is
+   doing the work and the test may still assert nothing.
+6. **Name a wrong implementation that ALSO satisfies the assertion.** If you can
+   name one, the assertion is wrong — it pins something other than the property
+   it is named for, and the mutation will not reach it. This is the question
+   questions 1–5 cannot ask, because they interrogate the *mutation* while this
+   one interrogates the *assertion*, and a hollow assertion is invisible to a
+   mutation that never fails. Real examples, each of which passed review twice:
+   an equality helper that resolves nilness by reflection is satisfied by a
+   non-nil interface wrapping a nil pointer — the exact bug it was written to
+   catch; a substring assertion on an error message is satisfied by every other
+   message containing that substring, so it pins a field name rather than a
+   rule; an upper-bound comparison on a deadline is satisfied by *no deadline at
+   all*.
+7. **Which way does the assertion's zero value fall?** The commonest form of
+   question 6, and mechanical enough to check every time. When an assertion
+   compares a value that has a zero or absent case, work out which side of the
+   comparison that case lands on. An upper bound (`x <= budget`) is satisfied by
+   a zero that reads as negative or empty; a lower bound (`x > threshold`) or an
+   ordering (`a.After(b)`) rejects it. Six tests in one real suite used the same
+   idiom with the same omitted "was it set?" boolean: the two comparing an upper
+   bound were hollow, the four comparing a lower bound or an ordering were sound.
+   Prefer the direction that fails toward zero, or assert the "is it set?"
+   companion explicitly.
+
+Where a claim is empirical and cheap to settle — an errno, an exit code, a
+coverage number, **a grep count you are about to write an expected value for** —
+**measure it while writing the plan** and paste the result in. A row built on an
+assumed exit code is a row the executor discovers is wrong after the work is
+done, and this applies to the plan's own verification commands as much as to its
+falsifiability rows: an expected output written from memory is the same defect
+one level up, and it stops the executor at step 1.
+
+## Code review
+
+Two audiences. Both are part of the plan, not optional extras.
+
+**Executor: self-review before you report.** Do these and state the outcome of
+each in your report:
+
+- Re-read the full diff against "Why this matters". Does it solve the stated
+  problem, or does it only satisfy the done criteria? Those are different, and
+  the second one passing is how a wrong change ships.
+- Every hunk traces to a numbered step. Anything that doesn't is out of scope —
+  revert it, even if it's an improvement.
+- The new tests assert on observable behaviour, not on the implementation you
+  just wrote. A test that mirrors the code will pass for a broken rewrite.
+- Conventions match the exemplar file named in "Current state" — compare against
+  it directly rather than from memory.
+- Nothing left behind: debug output, commented-out code, stray TODOs, unrelated
+  formatting churn, temporary files.
+- Report honestly. Any verification you skipped or that failed, and any deviation
+  from the plan with its reason. A documented deviation is judged on merit; an
+  undocumented one is a review failure.
+
+**Reviewer: what to scrutinize in this specific change.** Written by the advisor,
+per plan — never boilerplate:
+
+- `<the riskiest hunk and why — e.g. "the batching in step 2 changes failure
+  semantics: one bad item used to fail one request, now it fails the batch">`
+- `<the assumption most likely to be wrong, and how to check it cheaply>`
+- `<what a fully green test suite would still not catch here>`
+
+If you can't name what a reviewer should distrust, the plan is under-specified —
+go back and find it before handing this over.
+
+## Done criteria
+
+Machine-checkable. ALL must hold:
+
+- [ ] `pnpm typecheck` exits 0
+- [ ] `pnpm test` exits 0; new tests for <X> exist and pass
+- [ ] the regression test for <X> fails at `<planned-at SHA>` and passes now
+- [ ] **every row of the falsifiability bar made to fail, with its observed
+      failure output in the report.** A row that cannot be made to fail FAILS
+      this criterion — call it out as the finding it is; the reviewer blocks
+      and refines the plan, so do not paper over it
+- [ ] `grep -rn "<old pattern>" <the repo's source root>` returns no matches
+- [ ] No files outside the in-scope list are modified (`git status`)
+- [ ] Code-review self-check completed; its outcome is in the report
+- [ ] `plans/README.md` status row updated — **not applicable if a reviewer
+      dispatched you and told you they maintain the index**
+
+## STOP conditions
+
+Stop and report back (do not improvise) if:
+
+- The code at the locations in "Current state" doesn't match the excerpts
+  (the codebase has drifted since this plan was written).
+- A step's verification fails twice after a reasonable fix attempt.
+- The fix appears to require touching an out-of-scope file.
+- You discover the assumption "<key assumption>" is false.
+
+## Maintenance notes
+
+For the human/agent who owns this code after the change lands:
+
+- What future changes will interact with this (e.g. "if pagination is added
+  to this endpoint, the batching in step 2 must be revisited").
+- Any follow-up explicitly deferred out of this plan (and why).
+- What the tests here will *not* catch if someone changes this later.
+
+(What a reviewer should scrutinize now lives in "Code review" above; this section
+is for whoever owns the code months from now.)
+```
+
+---
+
+## Index file: `plans/README.md`
+
+Written once by the advisor after all plans, updated by executors:
+
+```markdown
+# Implementation Plans
+
+Generated by the improve skill on <date>. Execute in the order below unless
+dependencies say otherwise. Each executor: read the plan fully before starting,
+honor its STOP conditions, and update your row when done.
+
+## Audit coverage
+
+Recorded per run so a later session can tell "examined and clean" from "never
+looked at". Append a new block per run rather than overwriting the last one.
+
+- **Run**: <YYYY-MM-DD>, effort level `quick` | `standard` | `deep`, at commit `<short SHA>`
+- **Audited**: <categories covered, and which packages/paths they were scoped to>
+- **Not audited**: <categories skipped, packages excluded, and why — e.g.
+  "at `quick`, only correctness/security/tests are audited, so perf, tech debt,
+  deps, docs, DX and direction were not; `packages/legacy/*` excluded as frozen">
+- **Verification**: <which findings went through the adversarial refutation pass;
+  say so if it was capped, and name the ones that are self-vetted only; which
+  plans got a premise verifier>
+- **Merged review**: <`coding:execute-plan review-merged` run over plans <NNN>–<NNN> at `<short SHA>`,
+  or "not run — plans reviewed one at a time only">, so a later
+  `coding:reconcile-plans` can tell the two apart
+
+## Execution order & status
+
+| Plan | Title | Priority | Effort | Depends on | Status | Issue |
+|------|-------|----------|--------|------------|--------|-------|
+| 001  | ...   | P1       | S      | —          | TODO   | —     |
+| 002  | ...   | P1       | M      | 001        | DONE — `advisor/002-x` @ `abc1234`, not merged | —     |
+
+The `Issue` column carries the `--issues` URL when that flag was used, and `—`
+otherwise. A `DONE` row **must** name the branch and commit that holds the work
+and whether it is merged: `DONE` means "approved", not "on `HEAD`", and
+`coding:reconcile-plans` cannot tell an unmerged plan from a regressed one without it.
+
+Status values, and nothing else — `coding:reconcile-plans` branches on exactly these, so an
+invented value is silently skipped:
+
+- `TODO` — written, not started.
+- `IN PROGRESS` — **set this when you dispatch an executor**, before it starts. Nothing else sets it, and `coding:reconcile-plans`' dead-executor detection depends on it.
+- `DONE` — approved by review. **Not merged**: record the branch and commit, and whether it has reached the user's branch.
+- `BLOCKED` — with a one-line reason, and a note of which hunks are salvageable.
+- `REJECTED` — with a one-line rationale (finding fixed independently, or approach abandoned).
+- `SUPERSEDED` — replaced by a later plan; name it.
+
+## Dependency notes
+
+- 002 requires 001 because <reason>.
+
+## Findings considered and rejected
+
+- <finding>: not worth doing because <one line>. (So nobody re-audits it.)
+```
+
+## Quality bar — check before finishing each plan
+
+- Could a model that has never seen this repo execute this with only the plan file and the repo? If any step requires knowledge from the advisor session, inline that knowledge.
+- Is every verification a command with an expected result, not a judgment ("make sure it works")?
+- Does every step name exact files and symbols, not "the relevant module"?
+- Are the STOP conditions specific to this plan's actual risks, not boilerplate?
+- Does every path, command, and tool name come from *this* repo, with nothing carried over from this template's TypeScript example?
+- Does the test plan name a layer per case, and — for a bug fix — a test that fails before the change?
+- Does "Code review" name what a reviewer should distrust in this specific change, rather than generic advice?
+- Would a reviewer reading only "Why this matters" + "Done criteria" understand what they're approving?
+- No secret values anywhere in the file — locations and credential types only.
+- "Planned at" SHA and date are filled in from actual `git rev-parse --short HEAD` and `date +%F` output, not guessed, and the in-scope paths in the drift check match the Scope section.

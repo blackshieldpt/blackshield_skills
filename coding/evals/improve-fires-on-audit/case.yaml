@@ -1,0 +1,36 @@
+schema_version: "1.1"
+name: "improve-fires-on-audit"
+tags: [trigger, improve]
+runs: 2
+execution:
+  max_turns: 4
+  timeout_seconds: 180
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: "fires-improve"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?improve"'
+    min: 1
+    arm: both
+  - name: "does-not-fire-review"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?review"'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-fire-reconcile-plans"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?reconcile-plans"'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-fire-audit-codebase-security"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?audit-codebase-security"'
+    min: 0
+    max: 0
+    arm: both
