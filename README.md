@@ -1,6 +1,7 @@
-# Claude Skills
+# Blackshield Skills
 
-Custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills used at Blackshield, packaged as plugins.
+Reusable agent skills used at Blackshield, packaged as Claude Code plugins and
+also installable as plain Agent Skills in OpenCode and Codex.
 
 ## Plugins
 
@@ -124,7 +125,7 @@ read-only tables or slow merges.
 Install from this directory as a marketplace:
 
 ```
-/plugin marketplace add /path/to/claude_skills
+/plugin marketplace add /path/to/blackshield_skills
 /plugin install blueprint@blackshield-skills
 /plugin install coding@blackshield-skills
 /plugin install clickhouse@blackshield-skills
@@ -142,7 +143,7 @@ is a false negative.
 Or load one plugin for a single session:
 
 ```bash
-claude --plugin-dir /path/to/claude_skills/coding
+claude --plugin-dir /path/to/blackshield_skills/coding
 ```
 
 ### Release gate
@@ -165,7 +166,7 @@ The commands below are idempotent. `-sfn` replaces an existing link, and the
 loop aborts if a folder has no `SKILL.md`.
 
 ```bash
-SKILLS=/path/to/claude_skills
+SKILLS=/path/to/blackshield_skills
 DEST="$HOME/.config/opencode/skills"
 mkdir -p "$DEST"
 for d in "$SKILLS"/blueprint/skills/blueprint "$SKILLS"/clickhouse/skills/clickhouse "$SKILLS"/coding/skills/*; do
@@ -205,7 +206,7 @@ and admin skills from `/etc/codex/skills`. Some older builds only read
 documents.
 
 ```bash
-SKILLS=/path/to/claude_skills
+SKILLS=/path/to/blackshield_skills
 DEST="$HOME/.agents/skills"
 mkdir -p "$DEST"
 for d in "$SKILLS"/blueprint/skills/blueprint "$SKILLS"/clickhouse/skills/clickhouse "$SKILLS"/coding/skills/*; do
