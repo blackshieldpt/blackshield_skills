@@ -138,11 +138,21 @@ type TaskRunner struct { runningTasks atomic.Int32 }
 
 func (t *TaskRunner) Queue(ctx context.Context, fn WorkerFunc) error {
     t.runningTasks.Add(1)
-    wrapFn := func(ctx context.Context) { defer t.runningTasks.Add(-1); fn(ctx) }
-    return t.workerPool.Queue(ctx, wrapFn)
+    wrapFn := func(ctx context.Context) {
+        defer t.runningTasks.Add(-1)
+        fn(ctx)
+    }
+    if err := t.workerPool.Queue(ctx, wrapFn); err != nil {
+        t.runningTasks.Add(-1)
+        return err
+    }
+    return nil
 }
 func (t *TaskRunner) RunningTasks() int { return int(t.runningTasks.Load()) }
 ```
+
+`DispatchWithContext` returns an error when the context is canceled or the pool is stopped; the
+job never runs, so the counter must be rolled back on that path or it stays high forever.
 
 ### 11.3 Atomic Counter Stats
 
