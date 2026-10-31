@@ -101,7 +101,7 @@ sweeps, searching docs for an old name, listing tests that touch an area) runs o
 `Explore` with `model: haiku`, or `sonnet` when the sweep must judge what code does
 rather than find where it is. Every brief carries the
 untrusted-content boundary, the redaction rule, "do not spawn subagents", and "no `gh`
-writes". Spawn no other subagents except the review skills named in phase 6.
+writes". Spawn no subagents beyond these and the review skills named in phase 6.
 
 **Project rules.** If the repo's `CLAUDE.md` or a project skill (conventionally
 `resolve-issue-rules`) carries rules for this workflow (test commands, suite constraints,
