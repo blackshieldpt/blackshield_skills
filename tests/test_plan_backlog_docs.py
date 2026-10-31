@@ -8,7 +8,9 @@ approved but unintegrated forever.
 
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,8 +18,34 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CLOSING_THE_LOOP = REPO_ROOT / "coding" / "skills" / "improve" / "references" / "closing-the-loop.md"
 PLAN_TEMPLATE = REPO_ROOT / "coding" / "skills" / "improve" / "references" / "plan-template.md"
 PLANS_INDEX = REPO_ROOT / "plans" / "README.md"
+INDEX_ENV = "PLAN_BACKLOG_INDEX"
 
 STATUS_VALUES = {"TODO", "IN PROGRESS", "DONE", "BLOCKED", "REJECTED", "SUPERSEDED"}
+
+#: The final merge-state token a DONE row's status cell may end with.
+MERGE_TOKEN_RE = re.compile(
+    r"(?:merged `[0-9a-f]{7,40}`|merged (?:PR )?#\d+|not merged)$"
+)
+
+
+def index_path() -> Path:
+    """Return the index to inspect, honouring the test-only path override."""
+
+    override = os.environ.get(INDEX_ENV)
+    return Path(override) if override else PLANS_INDEX
+
+
+def done_statuses(text: str) -> list[str]:
+    """Return the status cell of every DONE row in an index document."""
+
+    statuses = []
+    for line in text.splitlines():
+        if not line.startswith("|") or "| DONE" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) >= 6:
+            statuses.append(cells[5])
+    return statuses
 
 
 def normalise(text: str) -> str:
@@ -113,30 +141,48 @@ class DoneDetectionProcedureTest(unittest.TestCase):
         self.assertIn("whether it is merged", normalise(read(PLAN_TEMPLATE)))
 
     def test_status_token_placement(self) -> None:
-        self.assertIn("prepend `verified <date>`", self.bullet)
+        self.assertIn(
+            "prepend `verified <date>` before the final merge-state token",
+            self.bullet,
+        )
         self.assertIn("final merge-state token", self.bullet)
         self.assertNotIn("append `verified <date>` to the status cell", self.bullet)
 
-    @unittest.skipUnless(
-        PLANS_INDEX.is_file(),
-        "plans/README.md is a local index and is not tracked in this checkout",
-    )
-    def test_live_index_tokens(self) -> None:
-        rows = [
-            line
-            for line in read(PLANS_INDEX).splitlines()
-            if line.startswith("|") and "| DONE" in line
-        ]
-        self.assertTrue(rows, "no DONE rows found in plans/README.md")
-        for row in rows:
-            cells = [cell.strip() for cell in row.strip("|").split("|")]
-            status = cells[5]
+        template = read(PLAN_TEMPLATE)
+        start = template.index("- `DONE` —")
+        end = template.index("- `BLOCKED` —", start)
+        definition = normalise(template[start:end])
+        self.assertIn("must not remove or move that final token", definition)
+
+    def assert_done_status_tokens(self, statuses: list[str]) -> None:
+        self.assertTrue(statuses, "no DONE rows found in the index")
+        for status in statuses:
             with self.subTest(status=status):
                 self.assertRegex(
                     status,
-                    r"merged `[0-9a-f]{7,40}`$",
+                    MERGE_TOKEN_RE,
                     "the merge-state token must be last in the status cell",
                 )
+
+    def test_live_index_tokens(self) -> None:
+        path = index_path()
+        if not path.is_file():
+            self.skipTest(
+                "plans/README.md is a local index and is not tracked in this checkout"
+            )
+        self.assert_done_status_tokens(done_statuses(read(path)))
+
+    def test_live_index_accepts_not_merged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            index = Path(directory) / "README.md"
+            index.write_text(
+                "| Plan | Title | Priority | Effort | Depends on | Status | Issue |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| 001 | Example | P1 | S | — | "
+                "DONE — `advisor/001-example` @ `abc1234`, not merged | — |\n",
+                encoding="utf-8",
+            )
+            self.assert_done_status_tokens(done_statuses(read(index)))
 
 
 if __name__ == "__main__":

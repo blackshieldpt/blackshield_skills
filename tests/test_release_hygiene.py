@@ -231,6 +231,34 @@ class ReleaseHygieneTests(unittest.TestCase):
                     f"missing or invalid `version:` in {skill}",
                 )
 
+    def test_release_versions_are_pinned(self) -> None:
+        coding_manifest = json.loads(read(PLUGIN_MANIFESTS["coding"]))
+        self.assertEqual(
+            coding_manifest["version"],
+            "0.13.2",
+            "coding plugin version changed; update the release with the tests",
+        )
+        reconcile = REPO_ROOT / "coding" / "skills" / "reconcile-plans" / "SKILL.md"
+        self.assertEqual(
+            frontmatter(reconcile).get("version"),
+            "0.1.1",
+            "reconcile-plans version changed; update the release with the tests",
+        )
+
+    def test_license_scope_is_present(self) -> None:
+        self.assertIn(
+            "Adapted in coding/skills/improve, review-plan, execute-plan and reconcile-plans.",
+            read(LICENSE),
+        )
+        text = read(README)
+        section = text.split("## License", 1)
+        self.assertEqual(len(section), 2, "README has no `## License` section")
+        body = normalized(section[1]).lower().replace("`", "")
+        self.assertIn(
+            "adapted in coding/skills/improve, review-plan, execute-plan and reconcile-plans",
+            body,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

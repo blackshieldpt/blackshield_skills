@@ -109,6 +109,11 @@ class ReadmeInstallDocsTest(unittest.TestCase):
         self.assertIn("@blueprint", body)
         self.assertIn("Do not rely on /blueprint", body)
 
+    def test_opencode_loop_aborts(self):
+        body = plain(section("OpenCode"))
+        self.assertIn("loop aborts if a folder has no SKILL.md", body)
+        self.assertNotIn("loop skips", body)
+
     def test_codex_invocation(self):
         body = plain(section("Codex"))
         for invocation in ("$blueprint", "$clickhouse", "$review", "/skills"):
