@@ -115,7 +115,8 @@ Smallest integer that fits; `Date`/`DateTime` unless sub-second is used; `Decima
 ## 3. Query rules (apply in this order)
 
 1. Filter on **sorting-key columns**.
-2. Apply secondary filters. ClickHouse already moves eligible `WHERE` conditions into `PREWHERE` automatically (`optimize_move_to_prewhere`, on by default, `*MergeTree` engines only); write `PREWHERE` by hand only to override the optimizer for a predicate over few small columns that filters most rows. **With `FINAL` the automatic move is off** (`optimize_move_to_prewhere_if_final` defaults to 0, since PREWHERE runs before FINAL and can skew results) — do not hand-write `PREWHERE` alongside `FINAL` without understanding that.
+2. Apply secondary filters. ClickHouse already moves eligible `WHERE` conditions into `PREWHERE` automatically (`optimize_move_to_prewhere`, on by default, `*MergeTree` engines only); write `PREWHERE` by hand only to override the optimizer for a predicate over few small columns that filters most rows. **With `FINAL`, behavior depends on the version and the effective setting:** since **26.10** `optimize_move_to_prewhere_if_final` defaults to `1` and moves only conditions that depend on the sorting key and are deterministic within the query, so `FINAL` results are unaffected. Before 26.10 the default is `0`.
+`compatibility` below 26.10 restores the old behavior. A profile or query `SETTINGS` clause can override the default; check `system.settings` (`name`, `value`, `changed`) for the effective value, and do not hand-write `PREWHERE` alongside `FINAL` without understanding that a manual PREWHERE still runs before FINAL where `apply_prewhere_after_final` is false; the automatic move only takes sorting-key, deterministic conditions.
 3. `IN` and other row-reducing logic.
 4. `JOIN`, `GROUP BY`, window functions — **last**.
 
