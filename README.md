@@ -133,11 +133,19 @@ Install from this directory as a marketplace:
 Each plugin carries a trigger eval suite under `<plugin>/evals/` (does the right skill
 fire, and stay silent, for representative prompts). Run one with
 `claude plugin eval ./<plugin> --no-publish --trust-plugin` from this directory (the path form — a bare plugin name resolves to the installed cache copy, which carries no evals); a full
-coding suite is 17 cases × 2 runs × 2 arms at roughly $0.10 a run, so use `--case <glob>` or
+coding suite is 18 cases × 2 runs × 2 arms at roughly $0.10 a run, so use `--case <glob>` or
 `--runs 1` when iterating. Results land in `<plugin>/evals/results/` (ignored).
 Cases with a `context.scaffold_script` (the Blueprint import and hard-negative
 cases) require `--scaffold`; without it the fixture is not placed and the case
 is a false negative.
+
+### Release gate
+
+A release gate is a full eval run against the **current plugin version** with
+`--runs 2` and both arms. `--runs 1` is for iteration only; do not cite it as a
+release result. After editing a skill's content, re-run that plugin's suite — a
+green result from an older version is not evidence for the current one. Results
+live under `<plugin>/evals/results/` (ignored) and are not a source of truth.
 
 Or load one plugin for a single session:
 
@@ -234,3 +242,10 @@ skills are Claude Code-first: they use `$ARGUMENTS`,
 `${CLAUDE_PLUGIN_ROOT}`, Claude subagent types and `gh`. The instructions load,
 but workflows that depend on those harness features may not run unchanged.
 The `claude plugin eval` commands are Claude Code-only.
+
+## License
+
+MIT. Original work copyright © 2026 shadcn; modifications copyright © 2026
+Blackshield. See [`LICENSE.md`](LICENSE.md). The `coding/improve` skill is
+adapted from [`shadcn/improve`](https://github.com/shadcn/improve); its original
+notice is retained in `coding/skills/improve/LICENSE.md`.

@@ -1,7 +1,7 @@
 ---
 name: audit-codebase-security
 description: "This skill should be used when the user asks to \"find vulnerabilities\", \"do a security audit\", \"audit this codebase for security\", \"is this exploitable\", \"trace attacker input to dangerous sinks\", \"check authn/authz or tenant isolation\", or \"validate this suspected security bug\" — in a whole repository, one component, or a diff. It profiles the repo, maps the attack surface, selects checks from a CVE-derived bug taxonomy and per-language packs (JS/TS, Python, Go, C/C++), and reports only findings that pass an evidence gate (attacker-controlled source, reachable sink, missing defense, concrete impact), with coverage and limitations. Read-only unless fixes are requested. Not for a general review of a branch or PR across all categories (coding:review) or for turning findings into handoff plans for another agent (coding:improve security)."
-version: 0.1.0
+version: 0.1.1
 argument-hint: "[full | <component or weakness> | diff <range>] [--json]"
 ---
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Audit Codebase Security"
-  short_description: "Evidence-driven codebase security audits"
-  default_prompt: "Use $audit-codebase-security to perform an evidence-driven security audit of this codebase."

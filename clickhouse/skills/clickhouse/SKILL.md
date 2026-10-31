@@ -1,7 +1,7 @@
 ---
 name: clickhouse
 description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse: MergeTree schema and sorting-key design, partitioning, data types and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, aggregate states, FINAL), EXPLAIN and system.query_log diagnostics, ingestion, insert deduplication, materialized views, merges and too-many-parts, mutations, Distributed tables, replication and Keeper, backup/restore, access control, Cloud vs OSS. Use when writing ClickHouse DDL/SQL, judging ClickHouse SQL for correctness or performance (including when a code review touches ClickHouse), tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations, slow merges, or Keeper/ZooKeeper trouble. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
-version: 1.1.2
+version: 1.1.3
 ---
 
 # ClickHouse Skill

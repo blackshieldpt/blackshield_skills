@@ -1,7 +1,7 @@
 ---
 name: blueprint
 description: "Guidelines for building Go applications on the Blueprint framework (github.com/oddbit-project/blueprint) and GoAuth authentication library (github.com/blackshieldpt/goauth). Covers architecture, providers, HTTP API patterns, database access, authentication, testing, migrations, error handling, and style rules. Use when code imports github.com/oddbit-project/blueprint or github.com/blackshieldpt/goauth, or user mentions Blueprint framework, Blueprint provider, Blueprint container, or GoAuth. Skip when the project has no Go files or no Blueprint/GoAuth dependency."
-version: 1.2.5
+version: 1.2.6
 ---
 
 # Blueprint

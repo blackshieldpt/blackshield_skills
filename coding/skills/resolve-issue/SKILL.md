@@ -1,7 +1,7 @@
 ---
 name: resolve-issue
 description: "This skill should be used when the user asks to \"fix issue N\", \"resolve issue N\", \"address issue N\", \"implement issue N\", \"open a PR for issue N\", or \"land this change\" on a GitHub repository. It takes a defect or feature from issue to merged PR, with one regression test per claim verified by mutation and a fresh-context adversarial review before the PR opens. Requires gh. Not for ad-hoc fixes with no issue and no request to land them; for those, work normally. \"Close issue N\" without a fix is a one-step close, confirmed first."
-version: 0.10.0
+version: 0.10.1
 argument-hint: "[issue-number | branch | description]"
 ---
 
