@@ -119,6 +119,8 @@ read-only tables or slow merges.
 
 ## Usage
 
+### Claude Code
+
 Install from this directory as a marketplace:
 
 ```
@@ -142,3 +144,93 @@ Or load one plugin for a single session:
 ```bash
 claude --plugin-dir /path/to/claude_skills/coding
 ```
+
+### OpenCode
+
+OpenCode reads Agent Skills directly; it does not use the Claude Code plugin
+marketplace. Global skills live in `~/.config/opencode/skills/<name>/SKILL.md`;
+project skills live in `.opencode/skills/<name>/SKILL.md`. OpenCode also reads
+the compatibility locations `~/.claude/skills`, `~/.agents/skills`,
+`.claude/skills` and `.agents/skills`.
+
+The commands below are idempotent. `-sfn` replaces an existing link, and the
+loop skips a folder that has no `SKILL.md`.
+
+```bash
+SKILLS=/path/to/claude_skills
+DEST="$HOME/.config/opencode/skills"
+mkdir -p "$DEST"
+for d in "$SKILLS"/blueprint/skills/blueprint "$SKILLS"/clickhouse/skills/clickhouse "$SKILLS"/coding/skills/*; do
+  [ -f "$d/SKILL.md" ] || { echo "not a skill: $d" >&2; exit 1; }
+  ln -sfn "$d" "$DEST/$(basename "$d")"
+done
+test -r "$DEST/blueprint/SKILL.md"
+test -r "$DEST/improve/SKILL.md"
+```
+
+For a project-local install, use `DEST="$PWD/.opencode/skills"`; the same
+`mkdir -p`, `ln -sfn` and `test -r` checks apply.
+
+The `coding` skills use `../improve/references`. Symlinking every coding sibling
+(as above) preserves it; a flat copy of only one folder breaks it. If symlinks
+are unavailable (for example on Windows), copy the whole `coding/skills` tree
+so the siblings stay together.
+
+Invocation:
+
+```text
+Use the `blueprint` skill to add a GET /products/{id} endpoint.
+Use the `clickhouse` skill to explain why this query is slow.
+Use the `review` skill to review my branch before I open a PR.
+```
+
+OpenCode v1 loads a skill on demand through its native `skill` tool. In
+OpenCode v2, mention it as `@blueprint`, `@clickhouse` or `@review`. Do not rely
+on `/blueprint`; slash-command exposure is not guaranteed in current versions.
+
+### Codex
+
+Codex reads repository skills from `.agents/skills/<name>/SKILL.md` (walking up
+to the repository root), user skills from `~/.agents/skills/<name>/SKILL.md`,
+and admin skills from `/etc/codex/skills`. Some older builds only read
+`.codex/skills` / `~/.codex/skills`; use the path your `codex --version`
+documents.
+
+```bash
+SKILLS=/path/to/claude_skills
+DEST="$HOME/.agents/skills"
+mkdir -p "$DEST"
+for d in "$SKILLS"/blueprint/skills/blueprint "$SKILLS"/clickhouse/skills/clickhouse "$SKILLS"/coding/skills/*; do
+  [ -f "$d/SKILL.md" ] || { echo "not a skill: $d" >&2; exit 1; }
+  ln -sfn "$d" "$DEST/$(basename "$d")"
+done
+test -r "$DEST/blueprint/SKILL.md"
+test -r "$DEST/improve/SKILL.md"
+```
+
+For a project-local install, use `DEST="$PWD/.agents/skills"` and the same
+checks. Do not commit absolute symlinks into a shared repository; use relative
+links or copy the whole `coding/skills` tree.
+
+Invoke a skill explicitly with `$skill-name`, or open the `/skills` picker:
+
+```text
+$blueprint Add a GET /products/{id} endpoint to this Go service.
+$clickhouse Why is this query slow, and what should I change?
+$review Review my branch before I open a PR.
+```
+
+Codex can also select a skill implicitly from its description. If the initial
+skill list is capped, install only the skills you need or raise
+`skills.max_context_tokens` in the Codex configuration.
+
+Both OpenCode and Codex read `~/.agents/skills`, so one symlink tree there
+works for both. OpenCode also reads `~/.claude/skills`; remove stale copies
+there if you see a duplicate. OpenCode resolves duplicate IDs by precedence;
+Codex shows duplicate names in its selector rather than merging them.
+
+`blueprint` and `clickhouse` are the most portable skills here. The `coding`
+skills are Claude Code-first: they use `$ARGUMENTS`,
+`${CLAUDE_PLUGIN_ROOT}`, Claude subagent types and `gh`. The instructions load,
+but workflows that depend on those harness features may not run unchanged.
+The `claude plugin eval` commands are Claude Code-only.
