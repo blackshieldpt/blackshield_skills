@@ -417,6 +417,10 @@ invented value is silently skipped:
 - `REJECTED` — with a one-line rationale (finding fixed independently, or approach abandoned).
 - `SUPERSEDED` — replaced by a later plan; name it.
 
+A `DONE` row's status cell ends with either
+`merged <merge-commit-or-PR>` or `not merged`. `coding:reconcile-plans` reads
+that token before falling back to git or PR checks.
+
 ## Dependency notes
 
 - 002 requires 001 because <reason>.

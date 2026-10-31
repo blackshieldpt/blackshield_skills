@@ -240,7 +240,26 @@ audit-coverage block so a later `coding:reconcile-plans` can tell "reviewed as a
 
 Process what happened since the last session. Read `plans/README.md` and every plan file, then per status:
 
-- **DONE** — first check whether the plan's recorded branch is an ancestor of `HEAD` (`git merge-base --is-ancestor <plan commit> HEAD`). If it is **not**, the plan is approved but unintegrated: report it as such and do **not** re-verify its criteria against `HEAD`, where the work does not exist and every check would fail misleadingly. If it **is** merged, spot-check that the done criteria still hold (cheap ones only) and append `verified <date>` to the status cell. Don't delete plan files — they're the record.
+- **DONE** — read the recorded merge state in the index first. If it records the
+  work as merged, spot-check that the done criteria still hold (cheap ones only)
+  and append `verified <date>` to the status cell. Do **not** infer merge state
+  from commit ancestry alone: squash and rebase merges rewrite the commit, so
+  the recorded commit is not an ancestor of `HEAD` even though the work is
+  integrated. If the row records the work as not merged, or the field is
+  missing, check `git merge-base --is-ancestor <plan commit> HEAD` for a
+  fast-forward or merge commit; when that fails, check patch equivalence with
+  `git cherry HEAD <plan commit>` (a `-` line means an equivalent patch is in
+  `HEAD`), or the merged PR with
+  `gh pr list --head <plan branch> --state merged --json number,mergeCommit`.
+  If `gh` is absent, unauthenticated, or the remote is not GitHub, say so and
+  rely on the git checks; do not treat the missing PR check as evidence that
+  the work is unintegrated.
+  If the work is genuinely unintegrated, report it as **approved but unintegrated**
+  and do **not** re-verify its criteria against `HEAD`, where the work does not
+  exist and every check would fail misleadingly. If none of the evidence
+  resolves the state, report it as **unverified** in the reconcile output and
+  leave the status cell `DONE`; do not invent a status value. Don't delete
+  plan files — they're the record.
 - **BLOCKED** — read the reason. Investigate the underlying obstacle in the codebase. Either rewrite the plan around it (new number if the approach changed fundamentally, in-place refresh otherwise) or mark REJECTED with one line of rationale.
 - **SUPERSEDED** — confirm the plan it names exists in the index; if it does not, flag the row.
 - **IN PROGRESS** (stale) — flag it to the user; an executor probably died mid-run. Check the worktree if one exists.
