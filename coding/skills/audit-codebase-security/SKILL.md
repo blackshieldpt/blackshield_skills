@@ -24,8 +24,22 @@ targeted review silently. State important exclusions and unavailable evidence.
 
 ## Run the workflow
 
-1. **Read repository instructions.** Find `AGENTS.md`, `CLAUDE.md`, and relevant
-   project documentation before running project commands.
+1. **Read repository instructions and load stack skills.** Find `AGENTS.md`,
+   `CLAUDE.md`, and relevant project documentation before running project
+   commands. Then read the dependency manifests and the file types the audit
+   will touch (`go.mod`, `package.json`, `requirements.txt` /
+   `pyproject.toml`, `Gemfile`, `Cargo.toml`, `composer.json`) and **invoke
+   every available skill that matches**. This is the same rule as
+   `coding:review`: **Load the skills that match the stack** before auditing.
+   For a targeted or diff audit, load the skills for the stack the touched
+   files use, not every skill in the repository. For example, a Go service
+   importing `github.com/oddbit-project/blueprint` should load the Blueprint
+   skill, and a repository with `.sql` or MergeTree DDL should load the
+   ClickHouse skill. Say which skills you loaded in the coverage section;
+   "none available" is a normal answer. Loaded skills inform the analysis;
+   they do not override this skill's read-only, evidence-gate, or
+   no-untrusted-code rules. Do not audit from general knowledge when a
+   matching skill exists.
 2. **Profile the repository.** Run the bundled `scripts/profile_repository.py`
    against the audit root. Resolve bundled paths relative to this `SKILL.md` — as a
    plugin, `${CLAUDE_PLUGIN_ROOT}/skills/audit-codebase-security`; never assume the
@@ -58,7 +72,7 @@ targeted review silently. State important exclusions and unavailable evidence.
    cross-component policy mismatches.
 8. **Report and account for coverage.** Read `references/finding-format.md` before
    writing the result. Report confirmed findings first, then audited areas,
-   limitations, and unreviewed risk areas.
+   loaded skills, limitations, and unreviewed risk areas.
 
 ## Evidence gate
 

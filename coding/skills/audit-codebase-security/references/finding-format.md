@@ -59,12 +59,16 @@ ID and assert that no document bytes or metadata are returned.
 
 After findings, include:
 
+Also record the loaded skills so a reader can tell which framework knowledge
+informed the audit:
+
 ```markdown
 ## Coverage
 
 - Mode and scope:
 - Components and entry points reviewed:
 - Taxonomy families reviewed:
+- Stack skills loaded: <list or "none available">
 - Tools/checks run:
 - Exclusions and limitations:
 ```
@@ -106,6 +110,7 @@ Top-level object:
 | `finding_count` | integer | Must equal `findings.length` |
 | `reviewed` | array of strings | Components/entry points reviewed |
 | `taxonomy_families` | array of strings | Stable family prefixes |
+| `loaded_skills` | array of strings | Stack skills loaded; may be empty |
 | `limitations` | array of strings | Missing evidence and exclusions |
 
 Each finding:
@@ -153,6 +158,7 @@ values must remain valid.
     "finding_count": 1,
     "reviewed": ["HTTP document routes", "document repository"],
     "taxonomy_families": ["AUTHZ"],
+    "loaded_skills": ["blueprint"],
     "limitations": ["Database row-level security was not available"]
   },
   "findings": [

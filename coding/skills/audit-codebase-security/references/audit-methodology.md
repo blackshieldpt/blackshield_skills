@@ -219,6 +219,7 @@ End every audit with:
 
 - reviewed components and entry points;
 - selected taxonomy families;
+- loaded skills (stack skills loaded, or "none available");
 - analysis/tools executed and their scope;
 - important paths or components not reviewed;
 - unavailable runtime/configuration/dependency evidence;
