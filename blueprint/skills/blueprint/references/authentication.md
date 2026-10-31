@@ -6,12 +6,18 @@ Part of the Blueprint skill. Section numbers match the original guide.
 
 ### 8.1 GoAuth Integration
 
-Initialize GoAuth with an ECDSA key pair for JWT signing loaded from `secure.KeyConfig` (§8.9). Empty keys generate ephemeral ES256 keys at startup via a small project helper `generateES256Keys() (privPEM, pubPEM string, err error)` (`ecdsa.GenerateKey(elliptic.P256(), rand.Reader)` + PEM-encode) — **dev only**: every restart invalidates all tokens and replicas cannot verify each other's. Imports: `github.com/blackshieldpt/goauth`, `github.com/blackshieldpt/goauth/store/pgstore`; the Blueprint HTTP auth helpers used in §8.3 and §8.11 come from `github.com/oddbit-project/blueprint/provider/httpserver/auth`, aliased `bpauth` because the project's own `auth/` package shares the name.
+Initialize GoAuth with an ECDSA key pair for JWT signing loaded from `secure.KeyConfig` (§8.9). Keys are required: `AuthConfig.Validate()` rejects startup when no key source is configured, and `NewGoAuthService` fails closed for callers that bypass validation. Ephemeral ES256 keys are generated only when `allowEphemeralKeys` is explicitly enabled, via a small project helper `generateES256Keys() (privPEM, pubPEM string, err error)` (`ecdsa.GenerateKey(elliptic.P256(), rand.Reader)` + PEM-encode) — **dev/test only**: every restart invalidates all tokens and replicas cannot verify each other's. Imports: `github.com/blackshieldpt/goauth`, `github.com/blackshieldpt/goauth/store/pgstore`.
 
 ```go
-func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubPEM string) (*goauth.AuthService, *pgstore.Store, error) {
+func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubPEM string, allowEphemeral bool) (*goauth.AuthService, *pgstore.Store, error) {
     store := pgstore.New(ctx, pgClient)
     if privPEM == "" || pubPEM == "" {
+        if !allowEphemeral {
+            return nil, nil, fmt.Errorf("JWT signing keys are required")
+        }
+        if privPEM != "" || pubPEM != "" {
+            return nil, nil, fmt.Errorf("both JWT signing keys are required")
+        }
         var err error
         if privPEM, pubPEM, err = generateES256Keys(); err != nil {
             return nil, nil, fmt.Errorf("generating JWT keys: %w", err)
@@ -28,22 +34,43 @@ func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubP
 }
 ```
 
+**Package aliases.** `bpauth` is `github.com/oddbit-project/blueprint/provider/httpserver/auth`. `httpauth` is the project's JWT/claims helper package — the package that exports `JWTMiddleware`, `GetUserIDFromContext`, and `GetClaimsFromContext`. Import it from the package that provides those symbols, or adapt the three call sites to the equivalent Blueprint/GoAuth API. If the exemplar project has no such package, leave the snippets illustrative and say so in the surrounding prose.
+
 Config carries the keys as `secure.KeyConfig` (§8.9):
 
 ```go
 type AuthConfig struct {
-    JWTPrivateKey secure.KeyConfig `json:"jwtPrivateKey"`   // {"jwtPrivateKey": {"keyFile": "/run/secrets/jwt.key"}}
-    JWTPublicKey  secure.KeyConfig `json:"jwtPublicKey"`
+    JWTPrivateKey      secure.KeyConfig `json:"jwtPrivateKey"`   // {"jwtPrivateKey": {"keyFile": "/run/secrets/jwt.key"}}
+    JWTPublicKey       secure.KeyConfig `json:"jwtPublicKey"`
+    AllowEphemeralKeys bool             `json:"allowEphemeralKeys"` // dev/test only
+}
+
+func (c *AuthConfig) Validate() error {
+    if c.AllowEphemeralKeys {
+        return nil
+    }
+    if c.JWTPrivateKey.IsEmpty() || c.JWTPublicKey.IsEmpty() {
+        return fmt.Errorf("auth: jwtPrivateKey and jwtPublicKey are required; set allowEphemeralKeys only for local development")
+    }
+    return nil
 }
 // in Config: Auth *AuthConfig `json:"auth"`
 ```
 
+`AllowEphemeralKeys` is for local development and tests only. A production deployment must load the keys from `KeyEnvVar` or `KeyFile`; the flag must not be set in a shipped configuration.
+
+Note the limit of this check: `secure.KeyConfig`'s IsEmpty() reports whether a **source field** (`Key`, `KeyEnvVar`, `KeyFile`) is blank; it does not resolve the value. A configured `KeyEnvVar` whose variable is unset still passes `Validate()` and yields an empty PEM. The helper guard below is the post-`Fetch` backstop for that case.
+
 Wire into `AppContext` in `Build()`:
 
 ```go
-privPEM, err := cfg.Auth.JWTPrivateKey.Fetch(); m.AbortFatal(err)   // secure.KeyConfig, §8.9; empty only in dev
+if cfg.Auth == nil {
+    m.AbortFatal(fmt.Errorf("auth config is required"))
+}
+m.AbortFatal(cfg.Auth.Validate())
+privPEM, err := cfg.Auth.JWTPrivateKey.Fetch(); m.AbortFatal(err)
 pubPEM, err := cfg.Auth.JWTPublicKey.Fetch();  m.AbortFatal(err)
-authSvc, authStore, err := auth.NewGoAuthService(m.Context, ctx.PgDb, privPEM, pubPEM)
+authSvc, authStore, err := auth.NewGoAuthService(m.Context, ctx.PgDb, privPEM, pubPEM, cfg.Auth.AllowEphemeralKeys)
 m.AbortFatal(err)
 ctx.Auth = authSvc; ctx.AuthStore = authStore
 ```
@@ -135,9 +162,11 @@ if match && rehashFn != nil { newHash, _ := rehashFn() }   // re-hash with curre
 
 | Need | Import | Call |
 |---|---|---|
-| Secure tokens (invite codes, password reset links, API keys) — URL-safe base64 | `bptoken "github.com/oddbit-project/blueprint/crypt/token"` | `code, err := bptoken.GenerateSecureBase64Token(32)` (32-char) |
+| Secure tokens (invite codes, password reset links, API keys) — URL-safe base64 | `bptoken "github.com/oddbit-project/blueprint/crypt/token"` | `code, err := bptoken.GenerateSecureBase64Token(32)` (32 bytes of entropy; RawURLEncoding produces 43 URL-safe characters) |
 | PINs (invite PINs, 2FA) — short alphanumeric | `github.com/oddbit-project/blueprint/crypt/pin` | `pinCode, err := pin.GenerateAlphanumeric(6)`; `match := pin.CompareAlphanumeric(userInput, storedPin)` (constant-time) |
 | Random alphanumeric IDs (source tokens, unpredictable identifiers) via `crypto/rand` | `crypto/rand` | `GenerateRandomAlphanumericID() string`: `rand.Read` 48 bytes → base64 encode, filter to alphanumeric, return 32+ chars |
+
+`GenerateAlphanumeric(6)` returns a dashed seven-character value (`ABC-123`); `CompareAlphanumeric` strips dashes and compares case-insensitively.
 
 ### 8.8 Constant-Time Comparison
 
@@ -146,11 +175,11 @@ Applies to: source token validation, PIN comparison, API key checks, any secret 
 
 ### 8.9 Secrets in Configuration
 
-`crypt/secure` (`github.com/oddbit-project/blueprint/crypt/secure`) config structs declare secrets from three sources, in priority order: plaintext value, environment variable, file. `Fetch()` resolves from whichever source is set and clears the env var after reading. Both structs implement `secure.CredentialConfig` (`Fetch() (string, error)` + `IsEmpty() bool`). Never inline secrets in config JSON — always use `*EnvVar` or `*File` fields for production.
+`crypt/secure` (`github.com/oddbit-project/blueprint/crypt/secure`) config structs declare secrets from three sources, in priority order: plaintext value, environment variable, file. `Fetch()` resolves from whichever source is set. When `KeyEnvVar` / `PasswordEnvVar` is used it calls `os.Getenv`; it does not unset it. The process environment is outside this struct's control — clear or scope it in the supervisor if that matters. Both structs implement `secure.CredentialConfig` (`Fetch() (string, error)` + `IsEmpty() bool`). Never inline secrets in config JSON — always use `*EnvVar` or `*File` fields for production.
 
 | Struct | For | Embeds | JSON | Resolve |
 |---|---|---|---|---|
-| `secure.DefaultCredentialConfig` | passwords | `Password`, `PasswordEnvVar`, `PasswordFile` | `{"smtp": {"host": "smtp.example.com", "port": 587, "username": "user@example.com", "passwordEnvVar": "SMTP_PASSWORD"}}` | `password, err := cfg.Smtp.Fetch()` (reads env var, clears it, returns value) |
+| `secure.DefaultCredentialConfig` | passwords | `Password`, `PasswordEnvVar`, `PasswordFile` | `{"smtp": {"host": "smtp.example.com", "port": 587, "username": "user@example.com", "passwordEnvVar": "SMTP_PASSWORD"}}` | `password, err := cfg.Smtp.Fetch()` (reads env var with os.Getenv; does not unset it) |
 | `secure.KeyConfig` | encryption keys, API keys, other non-password secrets | `Key`, `KeyEnvVar`, `KeyFile` | `{"encryption": {"algorithm": "aes256", "keyEnvVar": "ENCRYPTION_KEY"}}` | `key, err := cfg.Encryption.Fetch()` (same resolution); `cfg.Encryption.IsEmpty()` → no key source configured |
 
 ```go

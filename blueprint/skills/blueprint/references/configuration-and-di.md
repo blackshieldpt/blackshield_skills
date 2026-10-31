@@ -22,8 +22,7 @@ type Config struct {
 
 func NewConfig() *Config {
     return &Config{WebApi: NewApiConfig(), Db: pgsql.NewClientConfig(), Metadata: &etcd.Config{},
-        Prometheus: prometheus.NewConfig(), Log: log.NewDefaultConfig(), App: NewAppConfig(),
-        Auth: &AuthConfig{}}
+        Prometheus: prometheus.NewConfig(), Log: log.NewDefaultConfig(), App: NewAppConfig()}
 }
 ```
 
@@ -37,6 +36,11 @@ func (c *Config) Validate() error {
     if err := c.Db.Validate(); err != nil { return err }
     if err := c.Metadata.Validate(); err != nil { return err }
     // ...
+    if c.Auth != nil {
+        if err := c.Auth.Validate(); err != nil {
+            return err
+        }
+    }
     return nil
 }
 ```
