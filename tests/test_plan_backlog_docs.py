@@ -46,12 +46,15 @@ class DoneDetectionProcedureTest(unittest.TestCase):
         cls.bullet = done_bullet(cls.raw)
 
     def test_done_reads_recorded_merge_state(self) -> None:
+        self.assertIn("read the recorded merge state in the index first", self.bullet)
+        self.assertNotIn("do not read", self.bullet)
         for phrase in ("recorded merge state", "squash", "rebase"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.bullet)
 
     def test_recorded_state_is_checked_first(self) -> None:
-        self.assertIn("recorded merge state", self.bullet)
+        self.assertIn("read the recorded merge state in the index first", self.bullet)
+        self.assertNotIn("do not read", self.bullet)
         self.assertIn("git merge-base", self.bullet)
         self.assertLess(
             self.bullet.index("recorded merge state"),
@@ -61,9 +64,10 @@ class DoneDetectionProcedureTest(unittest.TestCase):
 
     def test_patch_equivalence_fallback(self) -> None:
         for phrase in (
-            "git cherry",
+            "git cherry HEAD <plan commit>",
             "gh pr list",
-            "a `-` line means an equivalent patch",
+            "every output line starts with `-`",
+            "no line starts with `+`",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.bullet)
@@ -87,6 +91,7 @@ class DoneDetectionProcedureTest(unittest.TestCase):
         self.assertIn("report it as **unverified**", self.bullet)
         self.assertIn("leave the status cell `DONE`", self.bullet)
         self.assertNotIn("status cell `unverified`", self.bullet)
+        self.assertIn("do not invent a status value", self.bullet)
 
         template = read(PLAN_TEMPLATE)
         section = template[template.index("Status values") :]
@@ -94,10 +99,14 @@ class DoneDetectionProcedureTest(unittest.TestCase):
         self.assertEqual(found, STATUS_VALUES)
 
     def test_done_row_has_merge_vocabulary(self) -> None:
-        template = normalise(read(PLAN_TEMPLATE))
-        self.assertIn("merged <merge-commit-or-PR>", template)
-        self.assertIn("not merged", template)
-        self.assertIn("status cell ends with", template)
+        raw = read(PLAN_TEMPLATE)
+        start = raw.index("- `DONE` —")
+        end = raw.index("- `BLOCKED` —", start)
+        definition = normalise(raw[start:end])
+        self.assertIn("status cell ends with", definition)
+        self.assertIn("merged <merge-commit-or-PR>", definition)
+        self.assertIn("not merged", definition)
+        self.assertNotIn("must not end with", definition)
 
     def test_plan_template_records_merge_state(self) -> None:
         self.assertIn("whether it is merged", normalise(read(PLAN_TEMPLATE)))

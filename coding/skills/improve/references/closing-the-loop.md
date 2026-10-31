@@ -242,14 +242,17 @@ Process what happened since the last session. Read `plans/README.md` and every p
 
 - **DONE** — read the recorded merge state in the index first. If it records the
   work as merged, spot-check that the done criteria still hold (cheap ones only)
-  and append `verified <date>` to the status cell. Do **not** infer merge state
+  and prepend `verified <date>` before the final merge-state token in the
+  status cell. Do **not** infer merge state
   from commit ancestry alone: squash and rebase merges rewrite the commit, so
   the recorded commit is not an ancestor of `HEAD` even though the work is
   integrated. If the row records the work as not merged, or the field is
   missing, check `git merge-base --is-ancestor <plan commit> HEAD` for a
-  fast-forward or merge commit; when that fails, check patch equivalence with
-  `git cherry HEAD <plan commit>` (a `-` line means an equivalent patch is in
-  `HEAD`), or the merged PR with
+  fast-forward or merge commit; when that fails, run
+  `git cherry HEAD <plan commit>` and treat the plan as merged only when
+  every output line starts with `-` and no line starts with `+`; a mixed output
+  is a partial merge, so use the PR fallback or report it unverified. The PR
+  fallback is
   `gh pr list --head <plan branch> --state merged --json number,mergeCommit`.
   If `gh` is absent, unauthenticated, or the remote is not GitHub, say so and
   rely on the git checks; do not treat the missing PR check as evidence that

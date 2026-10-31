@@ -412,7 +412,9 @@ invented value is silently skipped:
 
 - `TODO` — written, not started.
 - `IN PROGRESS` — **set this when you dispatch an executor**, before it starts. Nothing else sets it, and `coding:reconcile-plans`' dead-executor detection depends on it.
-- `DONE` — approved by review. **Not merged**: record the branch and commit, and whether it has reached the user's branch.
+- `DONE` — approved by review. Record the branch and commit. The status cell
+  ends with `merged <merge-commit-or-PR>` or `not merged`. Reconcile may
+  prepend `verified <date>` but must not remove or move that final token.
 - `BLOCKED` — with a one-line reason, and a note of which hunks are salvageable.
 - `REJECTED` — with a one-line rationale (finding fixed independently, or approach abandoned).
 - `SUPERSEDED` — replaced by a later plan; name it.

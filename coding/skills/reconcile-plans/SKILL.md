@@ -28,8 +28,9 @@ These carry the numbering of `coding:improve`'s rules, which the references cite
 1. **Never modify source code.** The only files you may change live under the plans
    directory. Don't delete plan files — they are the record.
 2. **Never run commands that mutate the user's working tree** — read, search, and
-   read-only checks only (`git merge-base --is-ancestor`, drift checks, cheap done
-   criteria).
+   read-only checks only (`git merge-base --is-ancestor`, `git cherry HEAD
+   <plan commit>`, `gh pr list --head <plan branch> --state merged`, drift
+   checks, cheap done criteria).
 3. **Every refreshed plan stays fully self-contained.**
 4. **Never reproduce secret values** — `file:line` and the credential type only.
 5. **If the user asks you to implement a plan, decline** and offer

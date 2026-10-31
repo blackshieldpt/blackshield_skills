@@ -23,6 +23,12 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def normalise(text: str) -> str:
+    """Collapse whitespace so Markdown line wrapping does not decide a check."""
+
+    return " ".join(text.split())
+
+
 class ClickHouseFinalPrewhereTests(unittest.TestCase):
     """Assert the version-aware FINAL/PREWHERE rule is documented."""
 
@@ -39,42 +45,43 @@ class ClickHouseFinalPrewhereTests(unittest.TestCase):
         )
         for name, text in self.documents.items():
             with self.subTest(document=name):
-                self.assertIn("optimize_move_to_prewhere_if_final", text)
-                self.assertIn("26.10", text)
-                self.assertIn("compatibility", text)
+                plain = normalise(text)
+                self.assertIn(
+                    "`optimize_move_to_prewhere_if_final` defaults to `1`", plain
+                )
+                self.assertIn("Before 26.10 the default is `0`", plain)
+                self.assertIn("26.10", plain)
+                self.assertIn("compatibility", plain)
                 for phrase in old_absolutes:
-                    self.assertNotIn(phrase, text)
+                    self.assertNotIn(phrase, plain)
 
     def test_zero_on_setting_line_is_qualified(self) -> None:
         for name, text in self.documents.items():
-            for line in text.splitlines():
-                if "optimize_move_to_prewhere_if_final" not in line:
-                    continue
-                if "0" in line:
-                    lowered = line.lower()
-                    with self.subTest(document=name, line=line):
-                        self.assertTrue(
-                            "before 26.10" in lowered or "compatibility" in lowered,
-                            "a zero default must be qualified by the version "
-                            "boundary or compatibility",
-                        )
+            with self.subTest(document=name):
+                self.assertIn("Before 26.10 the default is `0`", normalise(text))
 
     def test_final_explanation_is_present(self) -> None:
-        text = self.documents["SKILL.md"]
-        self.assertIn("conditions that depend on the sorting key", text)
-        self.assertIn("deterministic within the query", text)
+        for name, text in self.documents.items():
+            with self.subTest(document=name):
+                plain = normalise(text)
+                self.assertIn("conditions that depend on the sorting key", plain)
+                self.assertIn("deterministic within the query", plain)
 
     def test_manual_prewhere_warning_is_preserved(self) -> None:
         for name, text in self.documents.items():
             with self.subTest(document=name):
-                self.assertIn("do not hand-write", text.lower())
-                self.assertIn("*MergeTree", text)
+                plain = normalise(text)
+                self.assertIn("`apply_prewhere_after_final` is false", plain)
+                self.assertIn("still runs before FINAL", plain)
+                self.assertIn("do not hand-write", plain.lower())
+                self.assertIn("*MergeTree", plain)
 
     def test_effective_setting_is_documented(self) -> None:
         for name, text in self.documents.items():
             with self.subTest(document=name):
-                self.assertIn("system.settings", text)
-                self.assertIn("effective value", text)
+                plain = normalise(text)
+                self.assertIn("check `system.settings`", plain)
+                self.assertIn("effective value", plain)
 
 
 if __name__ == "__main__":
