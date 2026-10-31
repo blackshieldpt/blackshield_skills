@@ -1,0 +1,21 @@
+schema_version: "1.1"
+name: "clickhouse-fires-on-merge-tree-no-name"
+tags: [trigger, clickhouse]
+runs: 2
+execution:
+  max_turns: 6
+  timeout_seconds: 180
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: "fires-clickhouse"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?clickhouse"'
+    min: 1
+    arm: both
+  - name: "explains-sorting-key-mismatch"
+    type: llm
+    focus: last_message
+    weight: 1
+    arm: both
+    criteria: "The response explains that user_id is not a prefix of the sorting key (tenant, ts), so the filter cannot prune granules, and proposes a sorting-key, projection, or equivalent fix."

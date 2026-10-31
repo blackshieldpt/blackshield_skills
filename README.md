@@ -133,6 +133,9 @@ fire, and stay silent, for representative prompts). Run one with
 `claude plugin eval ./<plugin> --no-publish --trust-plugin` from this directory (the path form — a bare plugin name resolves to the installed cache copy, which carries no evals); a full
 coding suite is 17 cases × 2 runs × 2 arms at roughly $0.10 a run, so use `--case <glob>` or
 `--runs 1` when iterating. Results land in `<plugin>/evals/results/` (ignored).
+Cases with a `context.scaffold_script` (the Blueprint import and hard-negative
+cases) require `--scaffold`; without it the fixture is not placed and the case
+is a false negative.
 
 Or load one plugin for a single session:
 
