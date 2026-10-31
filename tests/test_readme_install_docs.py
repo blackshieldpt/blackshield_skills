@@ -40,6 +40,21 @@ class ReadmeInstallDocsTest(unittest.TestCase):
             ["Claude Code", "OpenCode", "Codex"],
         )
 
+    def test_section_order(self):
+        markers = [
+            "### Claude Code",
+            "claude --plugin-dir",
+            "### Release gate",
+            "### OpenCode",
+        ]
+        for earlier, later in zip(markers, markers[1:]):
+            with self.subTest(earlier=earlier, later=later):
+                self.assertLess(
+                    TEXT.index(earlier),
+                    TEXT.index(later),
+                    f"{earlier!r} must come before {later!r}",
+                )
+
     def test_opencode_paths(self):
         body = section("OpenCode")
         for path in (
@@ -75,6 +90,13 @@ class ReadmeInstallDocsTest(unittest.TestCase):
                 self.assertIn("mkdir -p", blocks)
                 self.assertIn("ln -sfn", blocks)
                 self.assertIn("test -r", blocks)
+        opencode_blocks = "\n".join(bash_blocks(section("OpenCode")))
+        self.assertIn('ln -sfn "$d"', opencode_blocks)
+
+    def test_iteration_flags_are_documented(self):
+        body = section("Claude Code")
+        self.assertIn("--scaffold", body)
+        self.assertIn("18 cases", body)
 
     def test_relative_reference_warning(self):
         body = plain(section("OpenCode"))
@@ -94,7 +116,7 @@ class ReadmeInstallDocsTest(unittest.TestCase):
                 self.assertIn(invocation, body)
 
     def test_shared_install_note(self):
-        body = plain(TEXT)
+        body = plain(section("Codex"))
         self.assertIn("both", body.lower())
         self.assertIn("~/.agents/skills", body)
         self.assertIn(

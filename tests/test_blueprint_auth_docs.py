@@ -130,6 +130,15 @@ class AuthReferenceTests(unittest.TestCase):
             "auth: jwtPrivateKey and jwtPublicKey are required", plain
         )
 
+    def test_validate_uses_or_not_and(self) -> None:
+        block = function_block(
+            strip_go_comments(read(AUTH_DOC)),
+            "func (c *AuthConfig) Validate() error",
+        )
+        plain = normalise(block)
+        self.assertIn("c.JWTPrivateKey.IsEmpty() || c.JWTPublicKey.IsEmpty()", plain)
+        self.assertNotIn("c.JWTPrivateKey.IsEmpty() && c.JWTPublicKey.IsEmpty()", plain)
+
     def test_ephemeral_warning(self) -> None:
         auth_doc = normalise(read(AUTH_DOC))
         self.assertIn(

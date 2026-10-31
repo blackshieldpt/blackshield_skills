@@ -12,6 +12,8 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LICENSE = REPO_ROOT / "LICENSE.md"
 README = REPO_ROOT / "README.md"
@@ -45,6 +47,19 @@ def normalized(text: str) -> str:
     """Collapse whitespace runs so wrapped prose can be matched."""
 
     return " ".join(text.split())
+
+
+def workflow_runs() -> list[str]:
+    """Return every step's ``run:`` value from the CI workflow."""
+
+    workflow = yaml.safe_load(read(WORKFLOW))
+    runs = []
+    for job in (workflow.get("jobs") or {}).values():
+        for step in job.get("steps") or []:
+            run = step.get("run")
+            if run is not None:
+                runs.append(str(run))
+    return runs
 
 
 def frontmatter(path: Path) -> dict[str, str]:
@@ -107,21 +122,36 @@ class ReleaseHygieneTests(unittest.TestCase):
 
     def test_ci_workflow_runs_docs_tests(self) -> None:
         self.assertTrue(WORKFLOW.is_file(), ".github/workflows/skills.yml is missing")
-        self.assertIn(
-            "python3 -m unittest discover -s tests -p 'test_*.py'",
-            read(WORKFLOW),
+        commands = workflow_runs()
+        self.assertTrue(
+            any(
+                "python3 -m unittest discover -s tests -p 'test_*.py'"
+                in command
+                for command in commands
+            ),
+            f"no CI step runs the documentation tests: {commands}",
         )
 
     def test_ci_workflow_runs_resolve_selftest(self) -> None:
-        self.assertIn(
-            "coding/skills/resolve-issue/scripts/selftest.sh",
-            read(WORKFLOW),
+        commands = workflow_runs()
+        self.assertTrue(
+            any(
+                "coding/skills/resolve-issue/scripts/selftest.sh" in command
+                and command.strip().startswith("bash ")
+                for command in commands
+            ),
+            f"no CI step runs the resolve-issue selftest: {commands}",
         )
 
     def test_ci_workflow_runs_audit_tests(self) -> None:
-        self.assertIn(
-            "coding/skills/audit-codebase-security/scripts",
-            read(WORKFLOW),
+        commands = workflow_runs()
+        self.assertTrue(
+            any(
+                "python3 -m unittest discover -s "
+                "coding/skills/audit-codebase-security/scripts" in command
+                for command in commands
+            ),
+            f"no CI step runs the audit script tests: {commands}",
         )
 
     def test_dead_openai_manifest_is_gone(self) -> None:

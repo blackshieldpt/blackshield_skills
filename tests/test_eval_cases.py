@@ -142,10 +142,13 @@ class ReviewRoutingTests(unittest.TestCase):
         self.assertIn("fires-review", by_name)
         self.assertEqual(by_name["fires-review"].get("min"), 1)
 
-        self.assertIn("does-not-fire-audit-codebase-security", by_name)
-        self.assertEqual(
-            by_name["does-not-fire-audit-codebase-security"].get("max"), 0
-        )
+        for negative in (
+            "does-not-fire-audit-codebase-security",
+            "does-not-fire-improve",
+        ):
+            with self.subTest(negative=negative):
+                self.assertIn(negative, by_name)
+                self.assertEqual(by_name[negative].get("max"), 0)
 
         self.assertFalse(
             any("security-review" in name for name in by_name),

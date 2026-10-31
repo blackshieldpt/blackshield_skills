@@ -15,6 +15,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLOSING_THE_LOOP = REPO_ROOT / "coding" / "skills" / "improve" / "references" / "closing-the-loop.md"
 PLAN_TEMPLATE = REPO_ROOT / "coding" / "skills" / "improve" / "references" / "plan-template.md"
+PLANS_INDEX = REPO_ROOT / "plans" / "README.md"
 
 STATUS_VALUES = {"TODO", "IN PROGRESS", "DONE", "BLOCKED", "REJECTED", "SUPERSEDED"}
 
@@ -110,6 +111,32 @@ class DoneDetectionProcedureTest(unittest.TestCase):
 
     def test_plan_template_records_merge_state(self) -> None:
         self.assertIn("whether it is merged", normalise(read(PLAN_TEMPLATE)))
+
+    def test_status_token_placement(self) -> None:
+        self.assertIn("prepend `verified <date>`", self.bullet)
+        self.assertIn("final merge-state token", self.bullet)
+        self.assertNotIn("append `verified <date>` to the status cell", self.bullet)
+
+    @unittest.skipUnless(
+        PLANS_INDEX.is_file(),
+        "plans/README.md is a local index and is not tracked in this checkout",
+    )
+    def test_live_index_tokens(self) -> None:
+        rows = [
+            line
+            for line in read(PLANS_INDEX).splitlines()
+            if line.startswith("|") and "| DONE" in line
+        ]
+        self.assertTrue(rows, "no DONE rows found in plans/README.md")
+        for row in rows:
+            cells = [cell.strip() for cell in row.strip("|").split("|")]
+            status = cells[5]
+            with self.subTest(status=status):
+                self.assertRegex(
+                    status,
+                    r"merged `[0-9a-f]{7,40}`$",
+                    "the merge-state token must be last in the status cell",
+                )
 
 
 if __name__ == "__main__":

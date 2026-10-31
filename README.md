@@ -139,6 +139,12 @@ Cases with a `context.scaffold_script` (the Blueprint import and hard-negative
 cases) require `--scaffold`; without it the fixture is not placed and the case
 is a false negative.
 
+Or load one plugin for a single session:
+
+```bash
+claude --plugin-dir /path/to/claude_skills/coding
+```
+
 ### Release gate
 
 A release gate is a full eval run against the **current plugin version** with
@@ -146,12 +152,6 @@ A release gate is a full eval run against the **current plugin version** with
 release result. After editing a skill's content, re-run that plugin's suite — a
 green result from an older version is not evidence for the current one. Results
 live under `<plugin>/evals/results/` (ignored) and are not a source of truth.
-
-Or load one plugin for a single session:
-
-```bash
-claude --plugin-dir /path/to/claude_skills/coding
-```
 
 ### OpenCode
 
@@ -162,7 +162,7 @@ the compatibility locations `~/.claude/skills`, `~/.agents/skills`,
 `.claude/skills` and `.agents/skills`.
 
 The commands below are idempotent. `-sfn` replaces an existing link, and the
-loop skips a folder that has no `SKILL.md`.
+loop aborts if a folder has no `SKILL.md`.
 
 ```bash
 SKILLS=/path/to/claude_skills
@@ -245,7 +245,9 @@ The `claude plugin eval` commands are Claude Code-only.
 
 ## License
 
-MIT. Original work copyright © 2026 shadcn; modifications copyright © 2026
-Blackshield. See [`LICENSE.md`](LICENSE.md). The `coding/improve` skill is
-adapted from [`shadcn/improve`](https://github.com/shadcn/improve); its original
-notice is retained in `coding/skills/improve/LICENSE.md`.
+MIT. Original work copyright © 2026 shadcn; adapted in
+`coding/skills/improve`, `review-plan`, `execute-plan` and `reconcile-plans`;
+modifications copyright © 2026 Blackshield. See [`LICENSE.md`](LICENSE.md). The
+`coding/skills/improve` skill is adapted from
+[`shadcn/improve`](https://github.com/shadcn/improve); its original notice is
+retained in `coding/skills/improve/LICENSE.md`.

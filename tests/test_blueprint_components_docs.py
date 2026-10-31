@@ -59,6 +59,11 @@ class BlueprintTaskRunnerCounterTests(unittest.TestCase):
         self.assertLess(increment, dispatch)
         self.assertLess(dispatch, rollback)
 
+    def test_success_path_decrements(self) -> None:
+        start = self.block.index("wrapFn := func")
+        end = self.block.index("if err :=", start)
+        self.assertIn("defer t.runningTasks.Add(-1)", self.block[start:end])
+
     def test_dispatch_error_is_explained(self) -> None:
         self.assertIn("DispatchWithContext", self.text)
         self.assertIn("context is canceled", self.text)

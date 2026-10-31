@@ -1,6 +1,7 @@
 MIT License
 
 Copyright (c) 2026 shadcn (original work)
+Adapted in coding/skills/improve, review-plan, execute-plan and reconcile-plans.
 Copyright (c) 2026 Blackshield (modifications)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
