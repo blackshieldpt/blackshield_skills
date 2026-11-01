@@ -2,8 +2,7 @@
 
 Every coding skill must run on Claude Code and on other Agent Skills hosts
 (OpenCode, Codex) without silently losing a guarantee. This file is the shared
-contract those skills cite. It is documentation only; the migration to it is
-plan 014.
+contract those skills cite. It is documentation only; skills adopt it as they migrate to the forge adapter.
 
 ## Invocation text
 
@@ -32,8 +31,7 @@ Other hosts may expose these optional environment variables instead:
 - `AGENT_MODEL_SWEEP` — the model for broad sweep and search passes.
 - `AGENT_MODEL_EXECUTOR` — the model for plan execution and mechanical work.
 
-If a host does not read a role variable, keep the session model. The plan 014
-migration must not silently downgrade a reviewer: when a skill needs a reviewer
+If a host does not read a role variable, keep the session model. A migrated skill must not silently downgrade a reviewer: when a skill needs a reviewer
 model and neither the pin nor the role applies, say so in the report instead of
 using a cheaper model without disclosure.
 
@@ -56,9 +54,13 @@ remove it when done.
 ## Forge
 
 Use `coding/skills/_shared/forge.py` for repository, issue, pull request,
-check and label operations. If detection returns `unknown forge` (exit 2), stop
-and report the host and configuration; do not guess an API or fall back to
-unauthenticated HTML scraping.
+check and label operations. Each skill or reference that runs it names it `$F` and carries this paragraph:
+
+`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md` (for a reference file, the skill that loaded it). Resolve it to an absolute path once. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported.
+
+`--repo` is a subcommand option: `python3 "$F" pr view N --repo HOST/OWNER/NAME`, never `python3 "$F" --repo HOST/OWNER/NAME pr view N`. Prefer `HOST/OWNER/NAME` whenever the host is known.
+
+When detection prints `unsupported forge` (exit 2), stop and report the host and configuration; do not guess an API or fall back to unauthenticated HTML scraping.
 
 A missing token is exit 3 and stops the write command. Forgejo/Gitea anonymous
 reads are allowed; writes are not. Token values never appear in output, and

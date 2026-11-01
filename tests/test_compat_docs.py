@@ -5,6 +5,7 @@ These are static documentation tests: they read repository files only.
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -32,6 +33,18 @@ def read(path: Path) -> str:
 
 def normalized(text: str) -> str:
     return " ".join(text.split())
+
+
+def flat(text: str) -> str:
+    return normalized(re.sub(r"(?m)^> ?", "", text))
+
+
+F_SENTENCE = (
+    "`$F` is `_shared/forge.py` next to this skill's directory: "
+    "`<base directory>/../_shared/forge.py`"
+)
+F_FALLBACK = "`${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback"
+F_EXIT2 = "Exit 2 alone does not prove the forge is unsupported"
 
 
 def table_rows(text: str) -> list[list[str]]:
@@ -86,11 +99,24 @@ class CompatibilityDocsTest(unittest.TestCase):
             "AGENT_MODEL_SWEEP",
             "AGENT_MODEL_EXECUTOR",
             "unvetted",
-            "unknown forge",
+            "unsupported forge",
             "isolation: \"worktree\"",
         ):
             with self.subTest(needle=needle):
                 self.assertIn(needle, text)
+
+    def test_harness_defines_forge_path(self):
+        body = flat(read(HARNESS))
+        for needle in (
+            F_SENTENCE,
+            F_FALLBACK,
+            F_EXIT2,
+            'never `python3 "$F" --repo',
+            "When detection prints `unsupported forge` (exit 2), stop and report the host and configuration",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, body)
+        self.assertNotIn("plan 014", body)
 
     def test_harness_keeps_unvetted_distinct_from_self_vetted(self):
         body = normalized(read(HARNESS))
