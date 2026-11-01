@@ -178,28 +178,41 @@ project skills live in `.opencode/skills/<name>/SKILL.md`. OpenCode also reads
 the compatibility locations `~/.claude/skills`, `~/.agents/skills`,
 `.claude/skills` and `.agents/skills`.
 
-The commands below are idempotent. `-sfn` replaces an existing link, and the
-loop aborts if a folder has no `SKILL.md`.
+The commands below are idempotent and run in a subshell, so an `exit 1` cannot close
+your terminal. `-sfn` replaces an existing link, and the loop aborts if a folder has no `SKILL.md`.
+`coding/skills/_shared` (the forge adapter and harness contract) is not a skill: it is linked after
+the loop as `$DEST/_shared`, because coding skills resolve `../_shared/forge.py`, and the block
+refuses to replace a `$DEST/_shared` that is not a link. That fixed name can collide with another
+collection's `_shared`; if it does, use a separate `DEST`.
 
 ```bash
+(
 SKILLS=/path/to/blackshield_skills
 DEST="$HOME/.config/opencode/skills"
-mkdir -p "$DEST"
+mkdir -p "$DEST" || exit 1
 for d in "$SKILLS"/blueprint/skills/blueprint "$SKILLS"/clickhouse/skills/clickhouse "$SKILLS"/coding/skills/*; do
+  [ "$(basename "$d")" = "_shared" ] && continue
   [ -f "$d/SKILL.md" ] || { echo "not a skill: $d" >&2; exit 1; }
   ln -sfn "$d" "$DEST/$(basename "$d")"
 done
-test -r "$DEST/blueprint/SKILL.md"
-test -r "$DEST/improve/SKILL.md"
+if [ -e "$DEST/_shared" ] && [ ! -L "$DEST/_shared" ]; then
+  echo "refusing: $DEST/_shared exists and is not a link; move it away first" >&2
+  exit 1
+fi
+ln -sfn "$SKILLS/coding/skills/_shared" "$DEST/_shared"
+for f in blueprint/SKILL.md improve/SKILL.md _shared/forge.py; do
+  if test -r "$DEST/$f"; then echo "ok: $f"; else echo "FAIL: $f" >&2; exit 1; fi
+done
+)
 ```
 
 For a project-local install, use `DEST="$PWD/.opencode/skills"`; the same
 `mkdir -p`, `ln -sfn` and `test -r` checks apply.
 
-The `coding` skills use `../improve/references`. Symlinking every coding sibling
-(as above) preserves it; a flat copy of only one folder breaks it. If symlinks
-are unavailable (for example on Windows), copy the whole `coding/skills` tree
-so the siblings stay together.
+The `coding` skills use `../improve/references` and `../_shared/forge.py`. Symlinking every
+coding sibling and `_shared` (as above) preserves both; a flat copy of only one folder breaks them.
+If symlinks are unavailable (for example on Windows), copy the whole `coding/skills` tree,
+including `_shared`, so `_shared` sits beside the skills.
 
 Invocation:
 
@@ -222,15 +235,24 @@ and admin skills from `/etc/codex/skills`. Some older builds only read
 documents.
 
 ```bash
+(
 SKILLS=/path/to/blackshield_skills
 DEST="$HOME/.agents/skills"
-mkdir -p "$DEST"
+mkdir -p "$DEST" || exit 1
 for d in "$SKILLS"/blueprint/skills/blueprint "$SKILLS"/clickhouse/skills/clickhouse "$SKILLS"/coding/skills/*; do
+  [ "$(basename "$d")" = "_shared" ] && continue
   [ -f "$d/SKILL.md" ] || { echo "not a skill: $d" >&2; exit 1; }
   ln -sfn "$d" "$DEST/$(basename "$d")"
 done
-test -r "$DEST/blueprint/SKILL.md"
-test -r "$DEST/improve/SKILL.md"
+if [ -e "$DEST/_shared" ] && [ ! -L "$DEST/_shared" ]; then
+  echo "refusing: $DEST/_shared exists and is not a link; move it away first" >&2
+  exit 1
+fi
+ln -sfn "$SKILLS/coding/skills/_shared" "$DEST/_shared"
+for f in blueprint/SKILL.md improve/SKILL.md _shared/forge.py; do
+  if test -r "$DEST/$f"; then echo "ok: $f"; else echo "FAIL: $f" >&2; exit 1; fi
+done
+)
 ```
 
 For a project-local install, use `DEST="$PWD/.agents/skills"` and the same

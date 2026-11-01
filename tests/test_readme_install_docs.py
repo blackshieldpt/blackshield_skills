@@ -102,6 +102,33 @@ class ReadmeInstallDocsTest(unittest.TestCase):
         body = plain(section("OpenCode"))
         self.assertIn("../improve/references", body)
         self.assertIn("copy the whole coding/skills tree", body)
+        self.assertIn("../_shared/forge.py", body)
+        self.assertIn("including _shared", body)
+
+    def install_block(self, name):
+        blocks = [b for b in bash_blocks(section(name)) if "ln -sfn" in b]
+        self.assertEqual(len(blocks), 1, name)
+        return blocks[0]
+
+    def test_install_links_shared(self):
+        for name in ("OpenCode", "Codex"):
+            with self.subTest(section=name):
+                block = self.install_block(name)
+                self.assertIn('[ "$(basename "$d")" = "_shared" ] && continue', block)
+                self.assertIn('{ echo "not a skill: $d" >&2; exit 1; }', block)
+                self.assertIn("_shared/forge.py", block)
+                link = 'ln -sfn "$SKILLS/coding/skills/_shared" "$DEST/_shared"'
+                self.assertIn(link, block)
+                self.assertGreater(block.index(link), block.index("done"))
+
+    def test_install_block_is_paste_safe(self):
+        for name in ("OpenCode", "Codex"):
+            with self.subTest(section=name):
+                block = self.install_block(name).strip()
+                self.assertTrue(block.startswith("("))
+                self.assertTrue(block.endswith(")"))
+                for text in ('[ ! -L "$DEST/_shared" ]', 'echo "ok: $f"', 'echo "FAIL: $f" >&2'):
+                    self.assertIn(text, block)
 
     def test_opencode_invocation(self):
         body = plain(section("OpenCode"))
