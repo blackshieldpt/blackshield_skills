@@ -4,7 +4,11 @@ on: [push, pull_request]
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,5 +20,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: resolve-issue helper selftest
         run: bash coding/skills/resolve-issue/scripts/selftest.sh
+      - name: resolve-issue helper selftest (stock macOS bash 3.2 and BSD tools)
+        if: runner.os == 'macOS'
+        run: PATH="/bin:/usr/bin:$PATH" /bin/bash coding/skills/resolve-issue/scripts/selftest.sh
       - name: Audit script tests
         run: python3 -m unittest discover -s coding/skills/audit-codebase-security/scripts -p 'test_*.py' -v
