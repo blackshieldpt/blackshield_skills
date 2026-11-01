@@ -715,7 +715,7 @@ class ForgeAdapterTest(unittest.TestCase):
 
     def test_pr_view_gitea_reads_commits(self):
         def http(method, url, body):
-            if url.endswith("/pulls/6/commits"):
+            if "/pulls/6/commits" in url:
                 return [
                     {"sha": "cafe", "commit": {"message": "Fix crash\n\nCloses #12"}},
                     {"sha": "beef", "commit": {"message": "Add test"}},
@@ -741,7 +741,128 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(data["commits"], ["cafe", "beef"])
         self.assertEqual(data["closing_issues"], [12])
         self.assertEqual(data["head_sha"], "cafe")
+        self.assertEqual(data["closing_issues_external"], [])
         self.assertIn("Fix crash", data["commit_messages"][0]["message"])
+
+    def test_repo_override_skips_origin_detection(self):
+        def gh(cmd):
+            if cmd[:2] == ["gh", "auth"]:
+                raise forge.ForgeError(2, "no gh")
+            return {
+                "number": 6,
+                "title": "Change",
+                "body": "",
+                "state": "OPEN",
+                "url": "https://github.com/acme/widgets/pull/6",
+                "baseRefName": "main",
+                "headRefName": "feature",
+                "headRefOid": "cafe",
+                "author": {"login": "dev"},
+                "closingIssuesReferences": [],
+                "commits": [],
+            }
+
+        with mock.patch.object(
+            forge, "git_remote_url", wraps=forge.git_remote_url
+        ) as origin:
+            result = self.invoke(
+                ["pr", "view", "6", "--repo", "github.com/acme/widgets"],
+                git_url="git@git.unsupported.tld:acme/widgets.git",
+                gh=gh,
+            )
+        self.assertEqual(result.code, 0, result.err)
+        self.assertFalse([c for c in result.gh if c[:2] == ["gh", "auth"]])
+        self.assertEqual(origin.call_count, 0)
+
+    def test_pr_view_gitea_paginates_commits(self):
+        commits = [
+            {"sha": f"sha{i}", "commit": {"message": f"msg {i}"}} for i in range(53)
+        ]
+
+        def http(method, url, body):
+            if "/pulls/6/commits" in url:
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+                page = int(query.get("page", ["1"])[0])
+                size = min(int(query.get("limit", ["30"])[0]), 50)
+                return commits[(page - 1) * size : page * size]
+            if url.endswith("/pulls/6"):
+                return {
+                    "number": 6,
+                    "title": "Change",
+                    "body": "",
+                    "state": "open",
+                    "merged": False,
+                    "html_url": "https://git.company.tld/acme/widgets/pulls/6",
+                    "base": {"ref": "main"},
+                    "head": {"ref": "feature", "sha": "sha0"},
+                    "user": {"login": "dev"},
+                }
+            raise AssertionError(f"unexpected {method} {url}")
+
+        result = self.invoke(["pr", "view", "6"], env=GITEA_ENV, http=http)
+        self.assertEqual(result.code, 0, result.err)
+        data = self.json(result)
+        self.assertEqual(len(data["commits"]), 53)
+        self.assertEqual(len(data["commit_messages"]), 53)
+        self.assertEqual(forge.PR_COMMIT_LIMIT, 100)
+
+    def test_pr_view_github_splits_cross_repo_closing_issues(self):
+        def ref(number, repo=None):
+            item = {"number": number}
+            if repo:
+                owner, name = repo.split("/")
+                item["repository"] = {"name": name, "owner": {"login": owner}}
+            return item
+
+        def gh(cmd):
+            return {
+                "number": 6,
+                "title": "Change",
+                "body": "",
+                "state": "OPEN",
+                "url": "https://github.com/acme/widgets/pull/6",
+                "baseRefName": "main",
+                "headRefName": "feature",
+                "headRefOid": "cafe",
+                "author": {"login": "dev"},
+                "closingIssuesReferences": [
+                    ref(2, "acme/widgets"),
+                    ref(3, "ACME/Widgets"),
+                    ref(4),
+                    ref(7, "acme/core"),
+                    ref(9, "other/core"),
+                ],
+                "commits": [],
+            }
+
+        result = self.invoke(["pr", "view", "6"], gh=gh)
+        self.assertEqual(result.code, 0, result.err)
+        data = self.json(result)
+        self.assertEqual(data["closing_issues"], [2, 3, 4])
+        self.assertEqual(
+            data["closing_issues_external"],
+            [{"repo": "acme/core", "number": 7}, {"repo": "other/core", "number": 9}],
+        )
+
+    def test_repo_github_parent_from_owner_and_name(self):
+        def gh(cmd):
+            return {
+                "nameWithOwner": "acme/widgets",
+                "owner": {"login": "acme"},
+                "name": "widgets",
+                "visibility": "PUBLIC",
+                "isFork": True,
+                "parent": {
+                    "id": "R_1",
+                    "name": "widgets",
+                    "owner": {"id": "U_1", "login": "upstream"},
+                },
+                "defaultBranchRef": {"name": "main"},
+            }
+
+        result = self.invoke(["repo"], gh=gh)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(self.json(result)["parent"], "upstream/widgets")
 
     def test_pr_diff_github_is_raw(self):
         diff = "diff --git a/x b/x\n@@ -1 +1 @@\n-a\n+b\n"

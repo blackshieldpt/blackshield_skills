@@ -49,6 +49,7 @@ EXIT_CONFLICT = 5
 DEFAULT_LIMIT = 50
 DEFAULT_TIMEOUT = 30
 PR_HEAD_SCAN_LIMIT = 1000
+PR_COMMIT_LIMIT = 100  # gh pr view returns at most 100 commits; cap Gitea/Forgejo the same
 MERGE_SHA_ATTEMPTS = 3
 MERGE_SHA_DELAY = 0.5
 SERVER_FORGE_TYPES = ("github", "gitea", "forgejo")
@@ -349,23 +350,20 @@ def _require_token(ctx: Context) -> None:
 
 
 def build_context(repo_override: Optional[str] = None) -> Context:
-    remote = parse_remote(git_remote_url() or "")
-    forge = detect_forge(remote)
-
-    owner = remote["owner"] if remote else ""
-    name = remote["name"] if remote else ""
-    host = remote["host"] if remote else ""
-    if repo_override:
-        parts = repo_override.split("/")
-        if len(parts) == 3:
-            host, owner, name = parts
-            forge = detect_forge({"host": host, "owner": owner, "name": name})
-        elif len(parts) == 2:
+    parts = repo_override.split("/") if repo_override else []
+    if repo_override and (len(parts) not in (2, 3) or not all(parts)):
+        raise ForgeError(EXIT_USAGE, "repo must be OWNER/NAME or HOST/OWNER/NAME")
+    if len(parts) == 3:
+        host, owner, name = parts
+        forge = detect_forge({"host": host, "owner": owner, "name": name})
+    else:
+        remote = parse_remote(git_remote_url() or "")
+        forge = detect_forge(remote)
+        owner = remote["owner"] if remote else ""
+        name = remote["name"] if remote else ""
+        host = remote["host"] if remote else ""
+        if len(parts) == 2:
             owner, name = parts
-        else:
-            raise ForgeError(EXIT_USAGE, "repo must be OWNER/NAME or HOST/OWNER/NAME")
-        if not all((owner, name)):
-            raise ForgeError(EXIT_USAGE, "repo must be OWNER/NAME or HOST/OWNER/NAME")
     if not owner or not name:
         raise ForgeError(
             EXIT_USAGE,
@@ -471,7 +469,26 @@ def _closing_issues(body: str) -> list[int]:
     return seen
 
 
+def _split_closing_refs(
+    data: dict[str, Any],
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    segments = [p for p in urllib.parse.urlparse(data.get("url") or "").path.split("/") if p]
+    pr_repo = "/".join(segments[:2]).lower() if len(segments) >= 2 else ""
+    same: list[Any] = []
+    external: list[dict[str, Any]] = []
+    for item in data.get("closingIssuesReferences") or []:
+        repository = item.get("repository") or {}
+        owner = (repository.get("owner") or {}).get("login")
+        name = repository.get("name")
+        if not pr_repo or not owner or not name or f"{owner}/{name}".lower() == pr_repo:
+            same.append(item.get("number"))
+        else:
+            external.append({"repo": f"{owner}/{name}", "number": item.get("number")})
+    return same, external
+
+
 def _norm_pr_gh(data: dict[str, Any]) -> dict[str, Any]:
+    closing, closing_external = _split_closing_refs(data)
     merged = _lower(data.get("state")) == "merged"
     commits = data.get("commits") or []
     return {
@@ -486,9 +503,8 @@ def _norm_pr_gh(data: dict[str, Any]) -> dict[str, Any]:
         "head": data.get("headRefName", ""),
         "head_sha": data.get("headRefOid", ""),
         "author": (data.get("author") or {}).get("login") or "",
-        "closing_issues": [
-            item.get("number") for item in data.get("closingIssuesReferences") or []
-        ],
+        "closing_issues": closing,
+        "closing_issues_external": closing_external,
         "commits": [item.get("oid", "") for item in commits],
         "commit_messages": [
             {
@@ -522,6 +538,7 @@ def _norm_pr_gitea(
         "head_sha": head.get("sha", ""),
         "author": (data.get("user") or {}).get("login") or "",
         "closing_issues": _closing_issues(data.get("body") or ""),
+        "closing_issues_external": [],
         "commits": [item.get("sha", "") for item in commits or []],
         "commit_messages": [
             {
@@ -671,10 +688,20 @@ def _gh_repo(ctx: Context) -> dict[str, Any]:
         ),
         "private": bool(data.get("isPrivate")),
         "fork": bool(data.get("isFork")),
-        "parent": (parent or {}).get("nameWithOwner") if parent else None,
+        "parent": _gh_parent(parent),
         "has_issues": bool(data.get("hasIssuesEnabled")),
         "default_branch": (data.get("defaultBranchRef") or {}).get("name"),
     }
+
+
+def _gh_parent(parent: Optional[dict[str, Any]]) -> Optional[str]:
+    if not parent:
+        return None
+    if parent.get("nameWithOwner"):
+        return parent["nameWithOwner"]
+    login = (parent.get("owner") or {}).get("login")
+    name = parent.get("name")
+    return f"{login}/{name}" if login and name else None
 
 
 def _gh_issue_list(ctx: Context, state: str, search: Optional[str], limit: int) -> list[dict[str, Any]]:
@@ -1083,8 +1110,8 @@ def _gitea_pr_list(
 
 def _gitea_pr_view(ctx: Context, number: int) -> dict[str, Any]:
     data = _http_json(ctx, "GET", _repo_path(ctx, f"/pulls/{number}"))
-    commits = _http_json(ctx, "GET", _repo_path(ctx, f"/pulls/{number}/commits"))
-    return _norm_pr_gitea(data, commits=commits or [])
+    commits = _paginate(ctx, _repo_path(ctx, f"/pulls/{number}/commits"), {}, PR_COMMIT_LIMIT)
+    return _norm_pr_gitea(data, commits=commits)
 
 
 def _gitea_pr_create(
