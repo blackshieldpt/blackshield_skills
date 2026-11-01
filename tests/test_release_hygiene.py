@@ -236,7 +236,7 @@ class ReleaseHygieneTests(unittest.TestCase):
         coding_manifest = json.loads(read(PLUGIN_MANIFESTS["coding"]))
         self.assertEqual(
             coding_manifest["version"],
-            "0.14.2",
+            "0.15.0",
             "coding plugin version changed; update the release with the tests",
         )
         reconcile = REPO_ROOT / "coding" / "skills" / "reconcile-plans" / "SKILL.md"
