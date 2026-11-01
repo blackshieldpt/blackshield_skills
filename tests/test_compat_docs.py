@@ -260,6 +260,7 @@ class CompatibilityDocsTest(unittest.TestCase):
             "coding/skills/review/references/playbook.md",
             "coding/skills/reconcile-plans/SKILL.md",
             "coding/skills/improve/references/closing-the-loop.md",
+            "coding/skills/file-issue/SKILL.md",
         }
         for rel in sorted(allowed):
             with self.subTest(allowed=rel):

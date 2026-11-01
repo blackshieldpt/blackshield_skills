@@ -1,25 +1,24 @@
 ---
 name: file-issue
-description: "This skill should be used when the user asks to \"open an issue\", \"file an issue\", \"create an issue\", \"report this bug\", \"write this up as an issue\", or \"track this as an issue\" on a GitHub repository. It investigates enough to name the mechanism, checks for duplicates, writes the issue as enumerable claims in the house style the resolve-issue skill consumes, has a fresh-context pass try to disprove every claim against the code, and files it with gh after the user confirms the text. Requires gh."
+description: "This skill should be used when the user asks to \"open an issue\", \"file an issue\", \"create an issue\", \"report this bug\", \"write this up as an issue\", or \"track this as an issue\" on a GitHub, Forgejo or Gitea repository. It investigates enough to name the mechanism, checks for duplicates, writes the issue as enumerable claims in the house style the resolve-issue skill consumes, has a fresh-context pass try to disprove every claim against the code, and files it through the bundled forge adapter (`gh` on GitHub) after the user confirms the text. Requires `gh` on GitHub or a token on Forgejo/Gitea."
 version: 0.5.1
 argument-hint: "[description | path:line | error text]"
 ---
 
-# Filing a GitHub issue
+# Filing an issue
 
-`$ARGUMENTS` is a description, a stack trace, an error message, or a file location. The
-output is one issue on the repo's GitHub remote whose body can be handed to
+The invocation text (Claude Code: `$ARGUMENTS`) is a description, a stack trace, an error message, or a file location. The
+output is one issue on the repo's forge whose body can be handed to
 `resolve-issue` without rework. Filing is outward-facing: show the title and body and get
-a yes before `gh issue create`.
+a yes before the issue is created.
+
+`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md`. Resolve it to an absolute path once. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported. Pass `--repo "$REPO"` as a subcommand option.
 
 ## Preconditions
 
-- `gh auth status -h github.com` succeeds and the remote is GitHub. Resolve the **target
-  repo** explicitly: `gh repo view --json nameWithOwner,isFork,parent,hasIssuesEnabled`.
-  On a fork, `gh` may target the parent; if `isFork` and issues are disabled on the
-  resolved repo, offer `parent.nameWithOwner`. Confirm the target with the user before
-  the duplicate search, then set `REPO=<nameWithOwner>` and pass `-R "$REPO"` to every
-  `gh issue` and `gh label` call.
+- Resolve the **target repo**: `python3 "$F" repo` reads `origin`. With `fork: true` and a `parent`, the default target is the parent (the GitHub CLI's default base repository for a fork; `review` targets it too): read it with `python3 "$F" repo --repo <host>/<parent>` and offer the fork (`<host>/<owner>/<name>`) as the alternative. Fall back to the fork only when the parent's `has_issues` is false. If reading the parent exits non-zero (3 or 4: a parent this login cannot see), print its stderr and offer the fork as the target; use it only on the user's explicit yes. With `fork: true` and no `parent`, ask which repository to file in. Otherwise the target is `<host>/<owner>/<name>`. Confirm the target with the user before the duplicate search, then set `REPO` to it: `<host>/<parent>` or `<host>/<owner>/<name>`. A non-empty `$REPO` handed in by a caller (§2) is used as given instead. Then `python3 "$F" repo --repo "$REPO"` must show `"has_issues": true`; if the confirmed target's `has_issues` is false, stop and say so. Every later `$F` call in this skill carries `--repo "$REPO"`.
+- `python3 "$F" auth --repo "$REPO"` prints `"authenticated": true`; otherwise stop and say how to authenticate (on GitHub, log in with the GitHub CLI for `<host>`; on Forgejo/Gitea, set `FORGE_TOKEN`).
+- On a non-zero `$F` exit, print its stderr and stop without filing (a calling `resolve-issue` is told nothing was filed; the §2 worktree rule still applies); the exceptions are a parent read that fails (above) and a `label create` in §5.
 - When the input is a stack trace, match each frame to `path:line` at the commit the
   user names, else the caller's worktree HEAD, else `HEAD`; if the lines do not match, ask which version produced it
   before citing anything.
@@ -72,7 +71,7 @@ run, a clean tree at the reported commit — happens in a **scratchpad worktree*
 against; set up by you, removed with `git worktree remove --force` when the skill ends,
 whether or not anything is filed — a declined draft or a draft with no surviving claim
 included). Read, cite, and run `Explore` sweeps there whenever one exists. When the caller hands one in
-(`resolve-issue` does, together with `$REPO`), use it as-is: its HEAD is the commit the
+(`resolve-issue` does, together with a non-empty `$REPO`), use it as-is: its HEAD is the commit the
 finding is against, skip the target-repo prompt, do not create another, and leave its
 removal to the caller. Before §4,
 discard anything written there (`git -C <wt> checkout -- . && git -C <wt> clean -fd`)
