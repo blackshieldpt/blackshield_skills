@@ -251,12 +251,14 @@ def _http_text(ctx: Context, path: str) -> str:
 
 
 def git_remote_url() -> Optional[str]:
-    """Return ``origin``'s URL, or None when there is no origin."""
+    """Return ``origin``'s URL, or ``upstream`` when no origin is configured."""
 
-    try:
-        return run_command(["git", "remote", "get-url", "origin"]).strip()
-    except ForgeError:
-        return None
+    for remote in ("origin", "upstream"):
+        try:
+            return run_command(["git", "remote", "get-url", remote]).strip()
+        except ForgeError:
+            continue
+    return None
 
 
 def parse_remote(url: str) -> Optional[dict[str, str]]:
@@ -290,9 +292,12 @@ def parse_remote(url: str) -> Optional[dict[str, str]]:
     return {"host": host.lower(), "owner": owner, "name": name}
 
 
-def _gh_available() -> bool:
+def _gh_available(host: str = "") -> bool:
+    args = ["gh", "auth", "status"]
+    if host:
+        args += ["--hostname", host]
     try:
-        run_command(["gh", "repo", "view", "--json", "nameWithOwner"])
+        run_command(args)
         return True
     except ForgeError:
         return False
@@ -319,7 +324,7 @@ def detect_forge(remote: Optional[dict[str, str]]) -> str:
         return "gitea"
     if os.environ.get("FORGE_URL"):
         return "gitea"
-    if _gh_available():
+    if _gh_available(host):
         return "github"
     raise ForgeError(
         EXIT_USAGE,
@@ -349,18 +354,24 @@ def build_context(repo_override: Optional[str] = None) -> Context:
 
     owner = remote["owner"] if remote else ""
     name = remote["name"] if remote else ""
+    host = remote["host"] if remote else ""
     if repo_override:
         parts = repo_override.split("/")
-        if len(parts) != 2 or not all(parts):
-            raise ForgeError(EXIT_USAGE, "repo must be OWNER/NAME")
-        owner, name = parts
+        if len(parts) == 3:
+            host, owner, name = parts
+            forge = detect_forge({"host": host, "owner": owner, "name": name})
+        elif len(parts) == 2:
+            owner, name = parts
+        else:
+            raise ForgeError(EXIT_USAGE, "repo must be OWNER/NAME or HOST/OWNER/NAME")
+        if not all((owner, name)):
+            raise ForgeError(EXIT_USAGE, "repo must be OWNER/NAME or HOST/OWNER/NAME")
     if not owner or not name:
         raise ForgeError(
             EXIT_USAGE,
-            "missing repository: no origin remote and no --repo OWNER/NAME",
+            "missing repository: no origin/upstream remote and no --repo",
         )
 
-    host = remote["host"] if remote else ""
     if forge == "github":
         host = host or "github.com"
         return Context(forge=forge, host=host, owner=owner, name=name)
@@ -462,6 +473,7 @@ def _closing_issues(body: str) -> list[int]:
 
 def _norm_pr_gh(data: dict[str, Any]) -> dict[str, Any]:
     merged = bool(data.get("merged"))
+    commits = data.get("commits") or []
     return {
         "number": data.get("number"),
         "title": data.get("title", ""),
@@ -477,7 +489,17 @@ def _norm_pr_gh(data: dict[str, Any]) -> dict[str, Any]:
         "closing_issues": [
             item.get("number") for item in data.get("closingIssuesReferences") or []
         ],
-        "commits": [item.get("oid", "") for item in data.get("commits") or []],
+        "commits": [item.get("oid", "") for item in commits],
+        "commit_messages": [
+            {
+                "sha": item.get("oid", ""),
+                "message": (
+                    (item.get("messageHeadline") or "").strip()
+                    + ("\n\n" + item["messageBody"].strip() if item.get("messageBody") else "")
+                ),
+            }
+            for item in commits
+        ],
     }
 
 
@@ -501,6 +523,14 @@ def _norm_pr_gitea(
         "author": (data.get("user") or {}).get("login") or "",
         "closing_issues": _closing_issues(data.get("body") or ""),
         "commits": [item.get("sha", "") for item in commits or []],
+        "commit_messages": [
+            {
+                "sha": item.get("sha", ""),
+                "message": ((item.get("commit") or {}).get("message") or "").strip(),
+            }
+            for item in commits or []
+        ],
+        "head_label": head.get("label", ""),
     }
 
 
@@ -608,6 +638,8 @@ def _gh_json(args: list[str]) -> Any:
 
 
 def _gh_selector(ctx: Context) -> list[str]:
+    if ctx.host and ctx.host != "github.com":
+        return ["-R", f"{ctx.host}/{ctx.slug}"]
     return ["-R", ctx.slug]
 
 
@@ -623,7 +655,7 @@ GH_PR_FIELDS = (
 
 
 def _gh_repo(ctx: Context) -> dict[str, Any]:
-    data = _gh_json(["repo", "view", ctx.slug, "--json", GH_REPO_FIELDS])
+    data = _gh_json(["repo", "view"] + _gh_selector(ctx) + ["--json", GH_REPO_FIELDS])
     owner = (data.get("owner") or {}).get("login") or ""
     name = data.get("name") or ""
     if not owner or not name:
@@ -1028,19 +1060,23 @@ def _gitea_pr_list(
     if query_state != "all":
         params["state"] = query_state
     path = _repo_path(ctx, "/pulls")
-    if not head:
-        items = _paginate(ctx, path, params, limit)
-        prs = [_norm_pr_gitea(item) for item in items]
-        if state == "merged":
-            prs = [pr for pr in prs if pr["merged"]]
-        return prs[:limit]
-    # Forgejo ignores the ``head`` query parameter, so filter client-side and
-    # scan pages independently of the requested result count.
-    def matches(item: dict[str, Any]) -> bool:
-        if ((item.get("head") or {}).get("ref") or "") != head:
-            return False
-        return state != "merged" or bool(item.get("merged"))
 
+    def matches(item: dict[str, Any]) -> bool:
+        if state == "merged" and not item.get("merged"):
+            return False
+        if not head:
+            return True
+        head_data = item.get("head") or {}
+        ref = head_data.get("ref") or ""
+        label = head_data.get("label") or ""
+        return head in (ref, label)
+
+    if not head and state != "merged":
+        items = _paginate(ctx, path, params, limit)
+        return [_norm_pr_gitea(item) for item in items][:limit]
+
+    # Forgejo ignores the `head` query parameter and filters merged state after
+    # a page of closed PRs; scan pages so a match is not lost behind `limit`.
     found = _scan_pages(ctx, path, params, PR_HEAD_SCAN_LIMIT, matches, limit)
     return [_norm_pr_gitea(item) for item in found]
 

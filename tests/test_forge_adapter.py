@@ -283,7 +283,34 @@ class ForgeAdapterTest(unittest.TestCase):
             },
         )
 
-    def test_repo_gitea_fields(self):
+    def test_repo_host_override_uses_ghe_selector(self):
+        calls = []
+
+        def gh(cmd):
+            calls.append(cmd)
+            return {
+                "nameWithOwner": "acme/widgets",
+                "owner": {"login": "acme"},
+                "name": "widgets",
+                "visibility": "PRIVATE",
+                "isPrivate": True,
+                "isFork": False,
+                "parent": None,
+                "hasIssuesEnabled": True,
+                "defaultBranchRef": {"name": "main"},
+                "url": "https://ghe.company.com/acme/widgets",
+            }
+
+        result = self.invoke(
+            ["repo", "--repo", "ghe.company.com/acme/widgets"], gh=gh
+        )
+        self.assertEqual(result.code, 0, result.err)
+        repo_calls = [cmd for cmd in calls if cmd[:3] == ["gh", "repo", "view"]]
+        self.assertTrue(repo_calls, calls)
+        self.assertIn("ghe.company.com/acme/widgets", repo_calls[0])
+        self.assertEqual(self.json(result)["host"], "ghe.company.com")
+
+
         def http(method, url, body):
             self.assertTrue(url.endswith("/repos/acme/widgets"), url)
             return {
@@ -665,7 +692,13 @@ class ForgeAdapterTest(unittest.TestCase):
                 "headRefOid": "cafe",
                 "author": {"login": "dev"},
                 "closingIssuesReferences": [{"number": 2}],
-                "commits": [{"oid": "cafe"}],
+                "commits": [
+                    {
+                        "oid": "cafe",
+                        "messageHeadline": "Fix crash",
+                        "messageBody": "Closes #2",
+                    }
+                ],
             }
 
         result = self.invoke(["pr", "view", "6"], gh=gh)
@@ -675,11 +708,16 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(data["merge_commit"], "deadbeef")
         self.assertEqual(data["closing_issues"], [2])
         self.assertEqual(data["commits"], ["cafe"])
+        self.assertEqual(data["commit_messages"][0]["sha"], "cafe")
+        self.assertIn("Fix crash", data["commit_messages"][0]["message"])
 
     def test_pr_view_gitea_reads_commits(self):
         def http(method, url, body):
             if url.endswith("/pulls/6/commits"):
-                return [{"sha": "cafe"}, {"sha": "beef"}]
+                return [
+                    {"sha": "cafe", "commit": {"message": "Fix crash\n\nCloses #12"}},
+                    {"sha": "beef", "commit": {"message": "Add test"}},
+                ]
             if url.endswith("/pulls/6"):
                 return {
                     "number": 6,
@@ -701,6 +739,7 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(data["commits"], ["cafe", "beef"])
         self.assertEqual(data["closing_issues"], [12])
         self.assertEqual(data["head_sha"], "cafe")
+        self.assertIn("Fix crash", data["commit_messages"][0]["message"])
 
     def test_pr_diff_github_is_raw(self):
         diff = "diff --git a/x b/x\n@@ -1 +1 @@\n-a\n+b\n"
