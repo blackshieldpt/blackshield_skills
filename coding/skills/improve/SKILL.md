@@ -1,7 +1,7 @@
 ---
 name: improve
 description: "This skill should be used when the user asks to \"audit this codebase\", \"find improvement opportunities\", \"what should we fix or improve\", \"what should we build next\", \"suggest a roadmap\", or \"write a plan for X that another agent can execute\". It surveys the repository as a senior advisor across bugs, security, performance, test coverage, tech debt, migrations, DX, docs and product direction, refutes its own HIGH and MED findings with fresh-context verifiers, and writes prioritized, self-contained handoff plans under plans/ for another model to execute. Strictly read-only on source code. Not for a security-only vulnerability hunt (coding:audit-codebase-security), reviewing a diff, branch or PR (coding:review), critiquing an existing plan (coding:review-plan), dispatching an executor on a plan (coding:execute-plan), or updating the plan backlog (coding:reconcile-plans)."
-version: 0.1.2
+version: 0.2.0
 argument-hint: "[quick | deep] [security | perf | tests | <category>] [next] [plan <description>] [--issues]"
 ---
 

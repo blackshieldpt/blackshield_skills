@@ -236,7 +236,7 @@ class ReleaseHygieneTests(unittest.TestCase):
         coding_manifest = json.loads(read(PLUGIN_MANIFESTS["coding"]))
         self.assertEqual(
             coding_manifest["version"],
-            "0.16.0",
+            "0.17.0",
             "coding plugin version changed; update the release with the tests",
         )
         review = REPO_ROOT / "coding" / "skills" / "review" / "SKILL.md"
@@ -248,8 +248,14 @@ class ReleaseHygieneTests(unittest.TestCase):
         reconcile = REPO_ROOT / "coding" / "skills" / "reconcile-plans" / "SKILL.md"
         self.assertEqual(
             frontmatter(reconcile).get("version"),
-            "0.1.2",
+            "0.2.0",
             "reconcile-plans version changed; update the release with the tests",
+        )
+        improve = REPO_ROOT / "coding" / "skills" / "improve" / "SKILL.md"
+        self.assertEqual(
+            frontmatter(improve).get("version"),
+            "0.2.0",
+            "improve version changed; update the release with the tests",
         )
 
     def test_license_scope_is_present(self) -> None:
