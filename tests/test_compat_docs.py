@@ -14,6 +14,8 @@ README = REPO_ROOT / "README.md"
 CODING = REPO_ROOT / "coding" / "skills"
 HARNESS = CODING / "_shared" / "harness.md"
 ADAPTER = CODING / "_shared" / "forge.py"
+REVIEW = CODING / "review" / "SKILL.md"
+PLAYBOOK = CODING / "review" / "references" / "playbook.md"
 
 ROWS = [
     ("`blueprint`, `clickhouse`", ["yes", "yes", "yes", "yes"]),
@@ -117,6 +119,77 @@ class CompatibilityDocsTest(unittest.TestCase):
             with self.subTest(needle=needle):
                 self.assertIn(needle, body)
         self.assertNotIn("plan 014", body)
+
+    def test_review_defines_forge_path(self):
+        text = read(REVIEW)
+        body = flat(text)
+        for needle in (
+            F_SENTENCE,
+            F_FALLBACK,
+            F_EXIT2,
+            "The invocation text (Claude Code: `$ARGUMENTS`)",
+            "Requires git; PR targets use the bundled forge adapter.",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, body)
+        self.assertEqual(text.count("$ARGUMENTS"), 1)
+
+    def test_review_pr_reads_use_forge(self):
+        body = flat(read(REVIEW))
+        for needle in (
+            '`python3 "$F" pr view N --repo "$REPO"` (fields',
+            'python3 "$F" pr diff N --repo "$REPO"',
+            'python3 "$F" issue view',
+            'python3 "$F" repo',
+            'python3 "$F" pr list --head <branch> --state open --repo "$REPO"',
+            "each `commit_messages[].message` (subject and body)",
+            "per `closing_issues_external` entry its `number` with `--repo <HOST>/<repo>`",
+            "with `fork: true` and a `parent`, `$REPO` is `<host>/<parent>`",
+            "with `fork: true` and no `parent`, ask which repository holds the PR",
+            "head_sha",
+            "<base_branch>",
+            "PR scope: on a non-zero `$F` exit print its stderr and stop",
+            "a failed `pr diff` takes the large-diff fallback",
+            "If `pr view` exits 4, ask whether `issue N` was meant",
+            'list it under "Not reviewed" and continue; do not stop',
+            "with exactly 100 the list may be truncated",
+            "commit whose parent is not itself listed",
+            '(`python3 "$F" issue view N`, with `--repo "$REPO"` when set',
+            "ends in `/OWNER/NAME` or `:OWNER/NAME` (optionally `.git`)",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, body)
+        for banned in ("headRefOid", "baseRefName", "with the tool the PR scope uses"):
+            with self.subTest(banned=banned):
+                self.assertNotIn(banned, body)
+
+    def test_review_has_no_gh_reads(self):
+        body = flat(read(REVIEW))
+        start = body.index("`--comment` → after showing")
+        end = body.index("- `issue N` →", start)
+        inside = body[start:end]
+        outside = body[:start] + body[end:]
+        self.assertIn("gh pr comment", inside)
+        self.assertIn("gh repo view --json visibility", inside)
+        self.assertIn(
+            "`--comment` uses `gh`, so it posts only on GitHub; on another forge, say so and do not post",
+            inside,
+        )
+        self.assertIsNone(re.search(r"\bgh (pr|repo|issue|api|auth)\b", outside))
+        self.assertIn(
+            'python3 "$F" pr list --state merged --limit 10 --repo "$REPO"', outside
+        )
+        self.assertIn("skip this step and say so", outside)
+
+    def test_review_local_scopes_survive_forge_failure(self):
+        body = flat(read(REVIEW))
+        for needle in (
+            "keep `origin`",
+            "local review works on every host",
+            "never add one yourself",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, body)
 
     def test_harness_keeps_unvetted_distinct_from_self_vetted(self):
         body = normalized(read(HARNESS))
