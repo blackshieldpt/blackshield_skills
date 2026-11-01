@@ -230,19 +230,27 @@ class CompatibilityDocsTest(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, text)
 
-    def test_no_skill_uses_the_adapter_yet(self):
-        """Plan 013 builds the foundation; plan 014 performs the migration."""
-
+    def test_adapter_use_is_allowlisted(self):
+        allowed = {
+            "coding/skills/review/SKILL.md",
+            "coding/skills/review/references/playbook.md",
+        }
+        for rel in sorted(allowed):
+            with self.subTest(allowed=rel):
+                path = REPO_ROOT / rel
+                self.assertTrue(path.is_file(), f"{rel} missing")
+                self.assertIn("forge.py", read(path))
         targets = list(CODING.glob("*/SKILL.md"))
         targets += list(CODING.glob("*/references/*.md"))
         self.assertTrue(targets, "no skills found")
         for path in targets:
-            with self.subTest(path=str(path.relative_to(REPO_ROOT))):
-                self.assertNotIn(
-                    "forge.py",
-                    read(path),
-                    "a skill was migrated in the foundation plan",
-                )
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            if rel in allowed:
+                continue
+            with self.subTest(path=rel):
+                text = read(path)
+                for banned in ("forge.py", "`$F`", '"$F"'):
+                    self.assertNotIn(banned, text, f"{rel} uses the adapter off the allowlist")
 
     def test_shared_directory_is_documentation_and_adapter_only(self):
         shared = sorted(

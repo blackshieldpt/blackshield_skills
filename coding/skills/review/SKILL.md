@@ -1,7 +1,7 @@
 ---
 name: review
 description: "This skill should be used when the user asks for a review of code changes — a diff, branch, PR, commit, or files under version control — in a git repository: \"review my changes\", \"review the branch\", \"review the diff\", \"review PR N\", \"review this PR\", \"look this over before I open a PR\", or \"review commit X\"; also invoked by resolve-issue as `review quick issue N`. It is the deep, refutation-vetted review — a read-only audit across correctness, security, tests, performance, debt, dependencies and docs, every finding opened at the cited line, HIGH and MED findings sent to fresh-context refuters where the host has subagents, and a ranked findings table with an APPROVE / REVISE / BLOCK verdict. It never edits code. Not for reviewing documents, plans (a handoff plan under plans/ is coding:review-plan), prose, or a snippet pasted in chat; a bare \"code review\" or a quick bug pass is the built-in /code-review, the lighter tool. Requires git; PR targets use the bundled forge adapter."
-version: 0.6.2
+version: 0.7.0
 argument-hint: "[PR number | commit | A..B | paths] [issue N] [quick | deep] [security | tests | perf] [--comment]"
 ---
 
