@@ -118,6 +118,22 @@ or query latency, designing materialized views, judging ClickHouse SQL inside a 
 review, or debugging OOM, `TOO_MANY_PARTS`, stuck mutations, Keeper trouble,
 read-only tables or slow merges.
 
+## Compatibility
+
+| Area | Claude Code | OpenCode | Codex | Forgejo/Gitea |
+|---|---|---|---|---|
+| `blueprint`, `clickhouse` | yes | yes | yes | yes |
+| `audit-codebase-security` | yes | yes | yes | yes |
+| `review` local scopes | yes | yes | yes | yes |
+| `review` PR, `file-issue`, `resolve-issue` | yes | planned | planned | planned |
+| Plan workflows | yes | partial | partial | partial |
+
+The forge adapter and the harness contract live in `coding/skills/_shared/`.
+Coding skills are migrated to them in plan 014. Until that migration lands, the
+forge-backed workflows (PR review, issue filing and issue resolution) are not
+claimed to run on Forgejo/Gitea: local review and the documentation-only skills
+do.
+
 ## Usage
 
 ### Claude Code
