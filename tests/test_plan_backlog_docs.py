@@ -108,7 +108,7 @@ class DoneDetectionProcedureTest(unittest.TestCase):
     def test_patch_equivalence_fallback(self) -> None:
         for phrase in (
             "git cherry <default> <plan commit>",
-            "gh pr list",
+            'python3 "$F" pr list --head <plan branch> --state merged',
             "every output line starts with `-`",
             "no line starts with `+`",
         ):
@@ -284,6 +284,42 @@ class DoneDetectionProcedureTest(unittest.TestCase):
         )
         self.assertIn("the PR fallback ran and listed no merged PR", self.bullet)
 
+    def test_pr_fallback_failure_is_not_evidence(self) -> None:
+        for phrase in (
+            "If `$F` exits non-zero",
+            "2 (unsupported forge, missing configuration or usage)",
+            "3 (authentication)",
+            "4 (repository not found)",
+            "5 (conflict)",
+            "1 (any other failure)",
+            "rely on the git checks",
+            "Do not treat a missing PR check, or an empty list on Forgejo/Gitea, "
+            "as evidence that the work is unintegrated",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.bullet)
+        for phrase in (
+            "gh pr list",
+            "gh pr view",
+            "mergeCommit",
+            "headRefOid",
+            "the remote is not GitHub",
+            "An empty list is not evidence",
+        ):
+            with self.subTest(absent=phrase):
+                self.assertNotIn(phrase, self.bullet)
+
+    def test_empty_pr_list_counts_only_on_github(self) -> None:
+        for phrase in (
+            '`python3 "$F" detect` reports `github`',
+            "`PR_HEAD_SCAN_LIMIT`",
+            "stops at the first page shorter than 50",
+            "so an empty list there leaves the plan unverified",
+            "listed no merged PR for the plan branch on GitHub, where that list is complete",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.bullet)
+
     def test_detected_merge_is_recorded(self) -> None:
         self.assertIn("**Record a merge you detect.**", self.bullet)
         self.assertIn("Replace the cell's final `not merged`", self.bullet)
@@ -327,6 +363,32 @@ GIT_ENV = {
     "GIT_COMMITTER_NAME": "test",
     "GIT_COMMITTER_EMAIL": "test@example.invalid",
 }
+
+
+class ForgeFallbackDocsTest(unittest.TestCase):
+    """The reconcile PR fallback runs through the forge adapter."""
+
+    def test_closing_the_loop_defines_forge_path(self) -> None:
+        text = normalise(read(CLOSING_THE_LOOP))
+        for phrase in (
+            "`$F` is `_shared/forge.py` next to the loading skill's directory: "
+            "`<base directory>/../_shared/forge.py`",
+            "Exit 2 alone does not prove the forge is unsupported",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_reconcile_skill_uses_forge_fallback(self) -> None:
+        text = normalise(read(RECONCILE_SKILL))
+        for phrase in (
+            'python3 "$F" pr list --head <plan branch> --state merged',
+            '`python3 "$F" detect`',
+            "`$F` is `_shared/forge.py` next to this skill's directory",
+            "never stops the reconcile",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        self.assertNotIn("gh pr list", text)
 
 
 class TempRepoCase(unittest.TestCase):

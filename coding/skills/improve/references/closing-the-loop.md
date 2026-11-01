@@ -6,6 +6,8 @@ The founding rule survives unchanged: **the advisor never edits source code.** I
 
 **Plans directory:** this file writes `plans/` throughout. If the advisor chose `advisor-plans/` instead, substitute that path everywhere below — index reads, executor instructions, and status writes.
 
+`$F` is `_shared/forge.py` next to the loading skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds the `SKILL.md` of the skill that loaded this file (`improve`, `execute-plan` or `reconcile-plans`). Resolve it to an absolute path once. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow the loading skill's stop rule (in the reconcile DONE bullet below, that rule is the bullet's own: rely on the git checks): 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported.
+
 ---
 
 ## `execute <plan>` — dispatch and review
@@ -300,15 +302,15 @@ Process what happened since the last session. Read `plans/README.md` and every p
   match. Without a match, whether every line starts with `+` or the output is
   mixed (a partial merge), the git checks have not shown a merge, so use the PR fallback or report it unverified. The PR
   fallback is
-  `gh pr list --head <plan branch> --state merged --json number,mergeCommit`.
-  If `gh` is absent, unauthenticated, or the remote is not GitHub, say so and
-  rely on the git checks; do not treat the missing PR check as evidence that
-  the work is unintegrated.
-  Whichever command lists it, a merged PR is evidence for this plan only when
+  `python3 "$F" pr list --head <plan branch> --state merged`; each returned PR carries its `number`,
+  `merge_commit` and `head_sha`. If `$F` exits non-zero — 2 (unsupported forge, missing configuration or usage), 3 (authentication), 4 (repository not found), 5 (conflict) or 1 (any other failure) — print its stderr, say so, and rely on the git checks. An empty list counts as no merged PR only when
+  `python3 "$F" detect` reports `github`, whose head filter runs on the server; on Forgejo/Gitea the
+  adapter scans at most 1000 pull requests (`PR_HEAD_SCAN_LIMIT` in `forge.py`), stops at the first page shorter than 50, and does not say when it stopped early, so an empty list there leaves the plan unverified. Do not treat a missing PR check, or an empty list on Forgejo/Gitea, as evidence that the work is unintegrated.
+  A merged PR is evidence for this plan only when
   its head commit is the plan commit or descends from it
   (`git merge-base --is-ancestor <plan commit> <PR head commit>` exits 0); the
-  head commit is the PR's `head_sha` in the forge adapter's output, or
-  `headRefOid` from `gh pr view <number> --json headRefOid`. The fallback often
+  head commit is the PR's `head_sha` in `$F`'s
+  output. The fallback often
   runs because the plan commit is missing from this clone, so first fetch the
   PR head where the forge serves it — `git fetch origin pull/<number>/head`
   (GitHub, Gitea and Forgejo) brings in the branch's commits and touches no
@@ -325,7 +327,7 @@ Process what happened since the last session. Read `plans/README.md` and every p
   re-deriving the merge after the branch is gone.
   The work is genuinely unintegrated only when the plan commit is present,
   `git cherry` printed only `+` lines with no patch-id match, and the PR
-  fallback ran and listed no merged PR for the plan branch; say in the report
+  fallback ran and listed no merged PR for the plan branch on GitHub, where that list is complete; say in the report
   that a squash merged after nearby changes, with no PR, looks the same.
   If the work is genuinely unintegrated, report it as **approved but unintegrated**
   and do **not** re-verify its criteria against `HEAD`, where the work does not
