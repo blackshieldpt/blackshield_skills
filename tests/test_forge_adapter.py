@@ -713,6 +713,36 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(data["commit_messages"][0]["sha"], "cafe")
         self.assertIn("Fix crash", data["commit_messages"][0]["message"])
 
+    def test_pr_list_github_omits_commits(self):
+        sent = {}
+
+        def gh(cmd):
+            sent[cmd[2]] = cmd[cmd.index("--json") + 1].split(",")
+            if cmd[2] == "view":
+                return {"number": 5, "state": "MERGED", "headRefOid": "cafe",
+                        "commits": [{"oid": "cafe"}]}
+            self.assertEqual(cmd[cmd.index("--head") + 1], "feature")
+            return [{"number": 5, "state": "MERGED", "mergeCommit": {"oid": "deadbeef"},
+                     "headRefName": "feature", "headRefOid": "cafe"}]
+
+        result = self.invoke(["pr", "list", "--head", "feature", "--state", "merged"], gh=gh)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertNotIn("commits", sent["list"])
+        for field in ("number", "state", "mergeCommit", "headRefName", "headRefOid",
+                      "body", "closingIssuesReferences"):
+            with self.subTest(field=field):
+                self.assertIn(field, sent["list"])
+        data = self.json(result)
+        self.assertEqual([pr["number"] for pr in data], [5])
+        self.assertEqual(data[0]["head_sha"], "cafe")
+        self.assertEqual(data[0]["merge_commit"], "deadbeef")
+        self.assertEqual(data[0]["commits"], [])
+        self.assertEqual(data[0]["commit_messages"], [])
+        view = self.invoke(["pr", "view", "5"], gh=gh)
+        self.assertEqual(view.code, 0, view.err)
+        self.assertIn("commits", sent["view"])
+        self.assertEqual(sent["list"], [f for f in sent["view"] if f != "commits"])
+
     def test_pr_view_gitea_reads_commits(self):
         def http(method, url, body):
             if "/pulls/6/commits" in url:

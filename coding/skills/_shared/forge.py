@@ -669,6 +669,12 @@ GH_PR_FIELDS = (
     "number,title,body,state,mergeCommit,url,baseRefName,headRefName,"
     "headRefOid,author,closingIssuesReferences,commits"
 )
+# pr list omits commits: 50 PRs x 100 commits exceeds GitHub's 500,000-node GraphQL
+# limit. List items carry commits: [] (as on Gitea/Forgejo); pr view carries them.
+GH_PR_LIST_FIELDS = (
+    "number,title,body,state,mergeCommit,url,baseRefName,headRefName,"
+    "headRefOid,author,closingIssuesReferences"
+)
 
 
 def _gh_repo(ctx: Context) -> dict[str, Any]:
@@ -766,7 +772,7 @@ def _gh_pr_list(ctx: Context, head: Optional[str], state: str, limit: int) -> li
         "--limit",
         str(limit),
         "--json",
-        GH_PR_FIELDS,
+        GH_PR_LIST_FIELDS,
     ]
     if head:
         args += ["--head", head]
