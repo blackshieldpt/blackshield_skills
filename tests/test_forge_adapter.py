@@ -1384,6 +1384,154 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(result.code, 0, result.err)
         self.assertEqual(self.json(result)["merge_commit"], "merged456")
 
+    def test_pr_merge_ghe_pins_head_with_hostname(self):
+        def gh(cmd):
+            self.assertEqual(cmd[:4], ["gh", "api", "-X", "PUT"])
+            self.assertEqual(cmd[4], "repos/acme/widgets/pulls/6/merge")
+            self.assertIn("sha=cafe123", cmd)
+            self.assertIn("merge_method=squash", cmd)
+            self.assertEqual(cmd[-2:], ["--hostname", "github.company.tld"])
+            return {"merged": True, "sha": "m1"}
+
+        result = self.invoke(
+            ["pr", "merge", "6", "--method", "squash", "--head-sha", "cafe123"],
+            git_url="git@github.company.tld:acme/widgets.git",
+            gh=gh,
+        )
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(len(result.gh), 1)
+        self.assertEqual(self.json(result)["merge_commit"], "m1")
+
+    def test_pr_merge_github_refused_exits_conflict(self):
+        def gh(cmd):
+            return {"merged": False, "message": "Head branch was modified"}
+
+        result = self.invoke(
+            ["pr", "merge", "6", "--method", "merge", "--head-sha", "cafe123"],
+            gh=gh,
+        )
+        self.assertEqual(result.code, 5)
+        self.assertIn("merge refused", result.err)
+        self.assertEqual(result.out, "")
+
+    def test_pr_view_github_review_decision(self):
+        sent = []
+        decision = {"value": ""}
+
+        def gh(cmd):
+            sent.append(cmd[cmd.index("--json") + 1].split(","))
+            return {"number": 6, "state": "OPEN", "reviewDecision": decision["value"]}
+
+        for raw, want in (
+            ("CHANGES_REQUESTED", "changes_requested"),
+            ("REVIEW_REQUIRED", "review_required"),
+            ("APPROVED", "approved"),
+            ("", None),
+        ):
+            with self.subTest(raw=raw):
+                decision["value"] = raw
+                result = self.invoke(["pr", "view", "6", "--reviews"], gh=gh)
+                self.assertEqual(result.code, 0, result.err)
+                self.assertEqual(sent[-1], forge.GH_PR_FIELDS.split(",") + ["reviewDecision"])
+                self.assertEqual(self.json(result)["review_decision"], want)
+        result = self.invoke(["pr", "view", "6"], gh=gh)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(sent[-1], forge.GH_PR_FIELDS.split(","))
+        self.assertNotIn("review_decision", self.json(result))
+        self.assertNotIn("reviewDecision", forge.GH_PR_FIELDS.split(","))
+        self.assertNotIn("reviewDecision", forge.GH_PR_LIST_FIELDS.split(","))
+
+    def test_pr_view_gitea_review_decision(self):
+        ids = iter(range(100, 200))
+
+        def review(login, state, **extra):
+            item = {"id": next(ids), "user": {"login": login}, "state": state, "official": True,
+                    "dismissed": False, "stale": False}
+            item.update(extra)
+            return item
+
+        def undated(item, when):
+            item = dict(item, submitted_at=when)
+            del item["id"]
+            return item
+
+        cases = (
+            ("superseded rejection, then approval",
+             [review("alice", "REQUEST_CHANGES", official=False), review("alice", "APPROVED")], "approved"),
+            ("rejection, review re-requested, other approves",
+             [review("bob", "REQUEST_CHANGES", official=False), review("bob", "REQUEST_REVIEW"),
+              review("alice", "APPROVED")], "changes_requested"),
+            ("rejection beside approval",
+             [review("bob", "REQUEST_CHANGES"), review("alice", "APPROVED")], "changes_requested"),
+            ("dismissed rejection only", [review("bob", "REQUEST_CHANGES", dismissed=True)], None),
+            ("dismissed rejection beside approval",
+             [review("bob", "REQUEST_CHANGES", dismissed=True), review("alice", "APPROVED")], "approved"),
+            ("stale approval", [review("alice", "APPROVED", stale=True)], None),
+            ("stale rejection", [review("bob", "REQUEST_CHANGES", stale=True)], "changes_requested"),
+            ("comment and pending request",
+             [review("alice", "COMMENT"), review("bob", "REQUEST_REVIEW")], None),
+            ("non-official approval only", [review("eve", "APPROVED", official=False)], None),
+            ("pending request beside approval",
+             [review("carol", "REQUEST_REVIEW"), review("alice", "APPROVED")], "approved"),
+            ("superseded rejection, listed newest first",
+             [review("alice", "REQUEST_CHANGES", official=False), review("alice", "APPROVED")][::-1], "approved"),
+            ("re-requested rejection, listed newest first",
+             [review("bob", "APPROVED", official=False), review("bob", "REQUEST_CHANGES")][::-1],
+             "changes_requested"),
+            ("no ids: submitted_at decides, newest first",
+             [undated(review("alice", "APPROVED"), "2026-10-02T00:00:00Z"),
+              undated(review("alice", "REQUEST_CHANGES"), "2026-10-01T00:00:00Z")], "approved"),
+        )
+        for label, reviews, want in cases:
+            def http(method, url, body, reviews=reviews):
+                path = url.split("?")[0]
+                if path.endswith("/pulls/6/reviews"):
+                    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+                    return reviews if query.get("page") == ["1"] else []
+                if path.endswith("/pulls/6/commits"):
+                    return []
+                if path.endswith("/pulls/6"):
+                    return {"number": 6, "state": "open", "merged": False,
+                            "head": {"ref": "feature", "sha": "cafe"},
+                            "requested_reviewers": [{"login": "carol"}]}
+                raise AssertionError(f"unexpected {method} {url}")
+
+            with self.subTest(case=label):
+                result = self.invoke(["pr", "view", "6", "--reviews"], env=GITEA_ENV, http=http)
+                self.assertEqual(result.code, 0, result.err)
+                self.assertEqual(self.json(result)["review_decision"], want)
+
+    def test_pr_view_gitea_reviews_read_every_page(self):
+        def pages(items, size):
+            def http(method, url, body):
+                path = url.split("?")[0]
+                if path.endswith("/pulls/6/reviews"):
+                    page = int(urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["page"][0])
+                    chunk = items[(page - 1) * size : page * size]
+                    return {"message": "not a list"} if None in chunk else chunk
+                if path.endswith("/pulls/6/commits"):
+                    return []
+                if path.endswith("/pulls/6"):
+                    return {"number": 6, "state": "open", "merged": False,
+                            "head": {"ref": "feature", "sha": "cafe"}}
+                raise AssertionError(f"unexpected {method} {url}")
+            return http
+
+        approval = {"user": {"login": "alice"}, "state": "APPROVED", "official": True}
+        rejection = {"user": {"login": "bob"}, "state": "REQUEST_CHANGES", "official": True}
+        for label, items, size, want in (
+            ("server caps pages at 30", [approval] * 30 + [rejection], 30, "changes_requested"),
+            ("201 reviews", [approval] * 201, 50, None),
+            ("200 reviews", [approval] * 200, 50, "approved"),
+            ("non-list page after approvals", [approval] * 50 + [None], 50, None),
+        ):
+            with self.subTest(case=label):
+                result = self.invoke(
+                    ["pr", "view", "6", "--reviews"], env=GITEA_ENV, http=pages(items, size)
+                )
+                self.assertEqual(result.code, 0, result.err)
+                self.assertEqual(self.json(result)["review_decision"], want)
+
     # -- labels ----------------------------------------------------------
 
     def test_label_list_and_create_gitea(self):

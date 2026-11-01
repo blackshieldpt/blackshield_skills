@@ -50,6 +50,7 @@ DEFAULT_LIMIT = 50
 DEFAULT_TIMEOUT = 30
 PR_HEAD_SCAN_LIMIT = 1000
 PR_COMMIT_LIMIT = 100  # gh pr view returns at most 100 commits; cap Gitea/Forgejo the same
+PR_REVIEW_LIMIT = 200
 MERGE_SHA_ATTEMPTS = 3
 MERGE_SHA_DELAY = 0.5
 SERVER_FORGE_TYPES = ("github", "gitea", "forgejo")
@@ -786,11 +787,22 @@ def _gh_pr_list(ctx: Context, head: Optional[str], state: str, limit: int) -> li
     return [_norm_pr_gh(item) for item in _gh_json(args)]
 
 
-def _gh_pr_view(ctx: Context, number: int) -> dict[str, Any]:
+GH_REVIEW_DECISIONS = {
+    "APPROVED": "approved",
+    "CHANGES_REQUESTED": "changes_requested",
+    "REVIEW_REQUIRED": "review_required",
+}
+
+
+def _gh_pr_view(ctx: Context, number: int, reviews: bool = False) -> dict[str, Any]:
+    fields = GH_PR_FIELDS + (",reviewDecision" if reviews else "")
     data = _gh_json(
-        ["pr", "view", str(number)] + _gh_selector(ctx) + ["--json", GH_PR_FIELDS]
+        ["pr", "view", str(number)] + _gh_selector(ctx) + ["--json", fields]
     )
-    return _norm_pr_gh(data)
+    pr = _norm_pr_gh(data)
+    if reviews:
+        pr["review_decision"] = GH_REVIEW_DECISIONS.get(data.get("reviewDecision") or "")
+    return pr
 
 
 def _gh_pr_create(
@@ -853,6 +865,7 @@ def _gh_pr_merge(
                 "-f",
                 f"sha={head_sha}",
             ]
+            + _gh_api_host(ctx)
         )
         merged = bool(data.get("merged"))
         if not merged:
@@ -1119,10 +1132,57 @@ def _gitea_pr_list(
     return [_norm_pr_gitea(item) for item in found]
 
 
-def _gitea_pr_view(ctx: Context, number: int) -> dict[str, Any]:
+def _gitea_reviews(ctx: Context, number: int) -> Optional[list[dict[str, Any]]]:
+    """Every review, or None when more than PR_REVIEW_LIMIT exist (a partial list cannot decide)."""
+    items: list[dict[str, Any]] = []
+    page = 1
+    while len(items) <= PR_REVIEW_LIMIT:
+        batch = _http_json(
+            ctx,
+            "GET",
+            _repo_path(ctx, f"/pulls/{number}/reviews"),
+            params={"limit": DEFAULT_LIMIT, "page": page},
+        )
+        # Page until an empty page, not a short one: a server cap below `limit` shortens every page.
+        if not isinstance(batch, list):
+            return None
+        if not batch:
+            return items
+        items.extend(batch)
+        page += 1
+    return None
+
+
+def _gitea_review_decision(reviews: Optional[list[dict[str, Any]]]) -> Optional[str]:
+    if reviews is None:
+        return None
+    # Latest by id (Gitea ids grow with time), not list order; submitted_at only without ids.
+    if all(isinstance(review.get("id"), int) for review in reviews):
+        ordered = sorted(reviews, key=lambda review: review["id"])
+    else:
+        ordered = sorted(reviews, key=lambda review: review.get("submitted_at") or "")
+    latest: dict[str, dict[str, Any]] = {}
+    for review in ordered:
+        if review.get("state") not in ("APPROVED", "REQUEST_CHANGES") or review.get("dismissed"):
+            continue
+        latest[(review.get("user") or {}).get("login") or ""] = review
+    if any(r["state"] == "REQUEST_CHANGES" for r in latest.values()):
+        return "changes_requested"
+    if any(
+        r["state"] == "APPROVED" and r.get("official") and not r.get("stale")
+        for r in latest.values()
+    ):
+        return "approved"
+    return None
+
+
+def _gitea_pr_view(ctx: Context, number: int, reviews: bool = False) -> dict[str, Any]:
     data = _http_json(ctx, "GET", _repo_path(ctx, f"/pulls/{number}"))
     commits = _paginate(ctx, _repo_path(ctx, f"/pulls/{number}/commits"), {}, PR_COMMIT_LIMIT)
-    return _norm_pr_gitea(data, commits=commits)
+    pr = _norm_pr_gitea(data, commits=commits)
+    if reviews:
+        pr["review_decision"] = _gitea_review_decision(_gitea_reviews(ctx, number))
+    return pr
 
 
 def _gitea_pr_create(
@@ -1347,8 +1407,8 @@ def cmd_pr_list(ctx: Context, args: argparse.Namespace) -> Any:
 
 def cmd_pr_view(ctx: Context, args: argparse.Namespace) -> Any:
     if ctx.forge == "github":
-        return _gh_pr_view(ctx, args.number)
-    return _gitea_pr_view(ctx, args.number)
+        return _gh_pr_view(ctx, args.number, reviews=args.reviews)
+    return _gitea_pr_view(ctx, args.number, reviews=args.reviews)
 
 
 def cmd_pr_diff(ctx: Context, args: argparse.Namespace) -> str:
@@ -1495,6 +1555,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr_view = pr_sub.add_parser("view")
     _add_repo(pr_view)
     pr_view.add_argument("number", type=int)
+    pr_view.add_argument("--reviews", action="store_true")
 
     pr_diff = pr_sub.add_parser("diff")
     _add_repo(pr_diff)
