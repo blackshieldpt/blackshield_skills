@@ -1,7 +1,7 @@
 ---
 name: execute-plan
 description: "This skill should be used when the user asks to \"execute plan N\", \"dispatch plan 003 to haiku\", \"run this plan with a cheaper model\", \"hand plans/002-x.md to an executor\", or \"review-merged\" / \"review the merged plans\" — plans written by coding:improve under plans/ (or advisor-plans/). It dispatches one executor subagent in an isolated worktree, reviews its diff like a tech lead against the plan (done criteria re-run, scope, tests, falsifiability bar) and renders APPROVE / REVISE / BLOCK; review-merged reviews several executed plans merged together as one change. Never edits code, merges, or pushes. Not for fixing a GitHub issue end to end (coding:resolve-issue) or for writing or critiquing plans (coding:improve, coding:review-plan)."
-version: 0.1.0
+version: 0.1.1
 argument-hint: "<plan file | plan number> [<model>] | review-merged [<base>]"
 ---
 
@@ -9,7 +9,8 @@ argument-hint: "<plan file | plan number> [<model>] | review-merged [<base>]"
 
 # Executing a handoff plan
 
-Two modes, chosen by `$ARGUMENTS`:
+Two modes, chosen by the invocation text (Claude Code: `$ARGUMENTS`; other hosts pass
+the text after the skill name). An empty invocation text names no plan: ask for one.
 
 - `<plan> [<model>]` → **execute**: dispatch a cheaper executor subagent on one plan in an
   isolated worktree, then review its diff and render a verdict. Treat the diff as untrusted
@@ -20,8 +21,9 @@ Two modes, chosen by `$ARGUMENTS`:
   executed plan stacked on another, and run after the last `execute` and before the work
   reaches the user's branch.
 
-**References.** `$R` is `${CLAUDE_PLUGIN_ROOT}/skills/improve/references` (or
-`../improve/references` from this skill's base directory). **Read
+**References.** `$R` is `../improve/references` resolved against this skill's base
+directory (the directory holding this `SKILL.md`), as an absolute path;
+`${CLAUDE_PLUGIN_ROOT}/skills/improve/references` is a Claude-only fallback. **Read
 `$R/closing-the-loop.md` before the first dispatch** — its `execute` and `review-merged`
 sections are the procedure: preconditions (including the `Premise verified` gate),
 the `IN PROGRESS` index write before anything is spawned, the dispatch prompt and report
@@ -53,12 +55,16 @@ These carry the numbering of `coding:improve`'s rules, which the references cite
 
 ## Requirements
 
-A git repository and a host that can spawn subagents with `isolation: "worktree"`. If
-either is missing, say so and hand the plan over for manual execution instead.
+A git repository and a host that can spawn subagents. Without a git repository, or
+without subagents, say so and hand the plan over for manual execution instead. A host
+without `isolation: "worktree"` still works: create the worktree manually with
+`git worktree add` as closing-the-loop's *Dispatch* section says.
 
 **Executor model.** The second argument, if given (`/coding:execute-plan 003 haiku`);
 otherwise the default in closing-the-loop's *Dispatch* section. Reviewers dispatched by
-`review-merged` use `model: opus`. There is no `quick`/`deep` here: nothing in the review
+`review-merged` use `model: opus` (on other hosts, `AGENT_MODEL_REVIEWER`). If neither
+applies, use the session model and say so in the report; never use a cheaper reviewer
+without saying so. There is no `quick`/`deep` here: nothing in the review
 is optional.
 
 **Which skill.** A plan from `plans/` goes here. A GitHub issue to take to a merged PR goes

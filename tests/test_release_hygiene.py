@@ -102,6 +102,7 @@ class ReleaseHygieneTests(unittest.TestCase):
         self.assertTrue(LICENSE.is_file(), "LICENSE.md is missing")
         text = read(LICENSE)
         self.assertIn("MIT License", text)
+        self.assertIn("\nCopyright (c) 2026 Blackshield\n", text)
         self.assertIn("Copyright (c) 2026 shadcn (original work)", text)
         self.assertIn("Copyright (c) 2026 Blackshield (modifications)", text)
 
@@ -241,23 +242,26 @@ class ReleaseHygieneTests(unittest.TestCase):
         reconcile = REPO_ROOT / "coding" / "skills" / "reconcile-plans" / "SKILL.md"
         self.assertEqual(
             frontmatter(reconcile).get("version"),
-            "0.1.1",
+            "0.1.2",
             "reconcile-plans version changed; update the release with the tests",
         )
 
     def test_license_scope_is_present(self) -> None:
         self.assertIn(
-            "Adapted in coding/skills/improve, review-plan, execute-plan and reconcile-plans.",
-            read(LICENSE),
+            "coding/skills/improve, review-plan, execute-plan and reconcile-plans are "
+            "adapted from shadcn/improve",
+            normalized(read(LICENSE)),
         )
         text = read(README)
         section = text.split("## License", 1)
         self.assertEqual(len(section), 2, "README has no `## License` section")
         body = normalized(section[1]).lower().replace("`", "")
         self.assertIn(
-            "adapted in coding/skills/improve, review-plan, execute-plan and reconcile-plans",
+            "coding/skills/improve, review-plan, execute-plan and reconcile-plans are adapted",
             body,
         )
+        self.assertIn("the other skills are blackshield's own work", body)
+        self.assertNotIn("original notice is retained", body)
 
 
 if __name__ == "__main__":
