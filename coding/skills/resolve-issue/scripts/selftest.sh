@@ -74,6 +74,15 @@ git worktree add -q --detach "$tmp/base-run.stale" HEAD && rm -rf "$tmp/base-run
 expect_rc 1 "$here"/base-run.sh -t "t dir/check.sh" -- bash "t dir/check.sh"
 if git worktree list --porcelain | grep -q 'base-run\.stale'; then fail "stale base-run worktree still registered"; fi
 
+# base-run -r: the base comes from the named remote (a fork's upstream); without -r it stays origin
+git init -q --bare "$tmp/up.git" && git push -q "$tmp/up.git" HEAD:refs/heads/main
+git remote add up "$tmp/up.git"
+expect_rc 0 "$here"/base-run.sh -r up -t "t dir/check.sh" -- bash "t dir/check.sh"
+expect_rc 1 "$here"/base-run.sh -r origin -t "t dir/check.sh" -- bash "t dir/check.sh"
+expect_rc 2 "$here"/base-run.sh -t "t dir/check.sh" -r
+expect_rc 2 "$here"/base-run.sh -r nosuch -t "t dir/check.sh" -- true
+git remote remove up
+
 # internal copy failure (a regular file at base where the test's directory must go) is 2
 (
   cd "$tmp" && mkrepo repo3 main
@@ -141,5 +150,23 @@ cd "$tmp"; mkrepo repo2 trunk
 git switch -qc fix/2 && echo changed > a && git commit -qam change
 printf 'grep -q changed a\n' > c.sh
 expect_rc 1 "$here"/base-run.sh -t c.sh -- bash c.sh
+
+# default-branch: origin/HEAD -> forge repo JSON -> origin/main|master (stub forge in a copied layout)
+[ -f "$here/../../_shared/forge.py" ] || fail "default-branch: forge.py not where the script looks"
+lay="$tmp/layout"; mkdir -p "$lay/resolve-issue/scripts" "$lay/_shared"
+cp "$here/default-branch.sh" "$lay/resolve-issue/scripts/"; db="$lay/resolve-issue/scripts/default-branch.sh"
+printf 'import json\nprint(json.dumps({"default_branch": "develop"}))\n' > "$lay/_shared/forge.py"
+[ "$("$db" 2>/dev/null)" = trunk ] || fail "default-branch: origin/HEAD must win over forge"
+git remote set-head origin -d
+[ "$("$db")" = develop ] || fail "default-branch: forge step"
+# the checkout is untrusted: a planted json.py (cwd, PYTHONPATH) must not run in either interpreter
+mkdir "$tmp/evil" && printf 'open("%s/pwned", "w")\n' "$tmp" > "$tmp/evil/json.py" && cp "$tmp/evil/json.py" json.py
+[ "$(PYTHONPATH="$tmp/evil" "$db")" = develop ] && [ ! -e "$tmp/pwned" ] || fail "default-branch: python3 not isolated from the checkout"
+rm json.py
+printf 'import sys\nsys.exit(2)\n' > "$lay/_shared/forge.py"
+expect_rc 1 "$db"
+git update-ref refs/remotes/origin/master HEAD   # not fetch: newer git recreates origin/HEAD on fetch
+[ "$("$db")" = master ] || fail "default-branch: main/master after forge failure"
+[ "$(FORGE_TYPE=gitea "$here"/default-branch.sh)" = master ] || fail "default-branch: real forge.py failure falls back"
 
 echo "selftest: ok"

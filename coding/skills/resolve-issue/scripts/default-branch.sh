@@ -12,10 +12,9 @@ if b=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null); then
   fi
   echo "$b"; exit 0
 fi
-if command -v gh >/dev/null 2>&1; then
-  if b=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null) && [ -n "$b" ]; then
-    echo "$b"; exit 0
-  fi
+F="$(dirname "$0")/../../_shared/forge.py"
+if [ -f "$F" ] && b=$(python3 -I "$F" repo 2>/dev/null | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("default_branch") or "")' 2>/dev/null) && [ -n "$b" ]; then
+  echo "$b"; exit 0
 fi
 for c in main master; do
   if git show-ref --verify -q "refs/remotes/origin/$c"; then echo "$c"; exit 0; fi
