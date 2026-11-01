@@ -96,7 +96,9 @@ class ReadmeInstallDocsTest(unittest.TestCase):
     def test_iteration_flags_are_documented(self):
         body = section("Claude Code")
         self.assertIn("--scaffold", body)
-        self.assertIn("18 cases", body)
+        cases = len(list((README.parent / "coding" / "evals").glob("*/case.yaml")))
+        self.assertIn(f"{cases} cases", body)
+        self.assertIn("--allow-tools", body)
 
     def test_relative_reference_warning(self):
         body = plain(section("OpenCode"))
