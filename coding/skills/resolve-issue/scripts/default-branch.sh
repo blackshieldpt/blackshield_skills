@@ -2,7 +2,7 @@
 # Print the remote default branch name. Takes no arguments.
 set -euo pipefail
 [ $# -eq 0 ] || { echo "usage: $0" >&2; exit 2; }
-valid() { case "$1" in ''|-*|*[[:space:]]*) return 1 ;; esac; git check-ref-format --branch "$1" >/dev/null 2>&1; }
+valid() { case "$1" in ''|-*|*[!A-Za-z0-9._/-]*) return 1 ;; esac; git check-ref-format --branch "$1" >/dev/null 2>&1; }
 if b=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null); then
   b=${b#origin/}
   # fetch never moves an existing origin/HEAD, so a renamed default branch leaves it stale

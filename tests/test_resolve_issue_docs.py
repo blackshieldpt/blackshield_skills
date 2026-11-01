@@ -300,6 +300,7 @@ class ForgeWritesTest(unittest.TestCase):
         db = read(SKILL_DIR / "scripts" / "default-branch.sh")
         self.assertIn("git check-ref-format --branch", db)
         self.assertIn("-*|", db)
+        self.assertIn("*[!A-Za-z0-9._/-]*", db)
         self.assertEqual(db.count('valid "$b"'), 2)
         br = read(SKILL_DIR / "scripts" / "base-run.sh")
         self.assertIn('fetch -q -- "$remote" "refs/heads/$main:refs/remotes/$remote/$main"', br)

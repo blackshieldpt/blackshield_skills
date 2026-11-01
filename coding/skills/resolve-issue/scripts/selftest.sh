@@ -179,6 +179,8 @@ git update-ref refs/remotes/origin/master HEAD   # not fetch: newer git recreate
   [ "$("$hdb")" = main ] && [ ! -e "$tmp/pwned" ] || fail "default-branch: hostile option-like forge name"
   printf 'import json\nprint(json.dumps({"default_branch": "main\\nevil"}))\n' > "$hs/_shared/forge.py"
   [ "$("$hdb")" = main ] || fail "default-branch: forge name with a newline"
+  printf 'import json\nprint(json.dumps({"default_branch": "main$(touch${IFS}pwned2)"}))\n' > "$hs/_shared/forge.py"
+  [ "$("$hdb")" = main ] && [ ! -e pwned2 ] && [ ! -e "$tmp/pwned2" ] || fail "default-branch: forge name with a command substitution"
   git remote set-head origin main
   [ "$("$hdb")" = main ] || fail "default-branch: valid origin/HEAD unchanged"
 )
