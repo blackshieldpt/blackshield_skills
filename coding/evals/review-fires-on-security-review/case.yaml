@@ -10,7 +10,7 @@ graders:
   - name: "fires-review"
     type: tool_used
     tool: Skill
-    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?review"'
+    input_match: '"skill"\s*:\s*"(?:coding:)?review"'
     min: 1
     arm: both
   - name: "does-not-fire-audit-codebase-security"
@@ -24,6 +24,13 @@ graders:
     type: tool_used
     tool: Skill
     input_match: '"skill"\s*:\s*"(?:[\w-]+:)?improve"'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-fire-security-review"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?security-review"'
     min: 0
     max: 0
     arm: both

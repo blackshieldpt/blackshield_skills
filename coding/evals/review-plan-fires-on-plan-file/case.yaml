@@ -10,7 +10,7 @@ graders:
   - name: "fires-review-plan"
     type: tool_used
     tool: Skill
-    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?review-plan"'
+    input_match: '"skill"\s*:\s*"(?:coding:)?review-plan"'
     min: 1
     arm: both
   - name: "does-not-fire-review"

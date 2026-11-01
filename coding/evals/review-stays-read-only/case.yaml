@@ -1,0 +1,51 @@
+schema_version: "1.1"
+name: "review-stays-read-only"
+tags: [behaviour, review]
+runs: 2
+context:
+  scaffold_script: place-files.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Skill, Bash, Edit, Write]
+graders:
+  - name: "fires-review"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:coding:)?review"'
+    min: 1
+    arm: both
+  - name: "does-not-edit-code"
+    type: tool_used
+    tool: Edit
+    input_match: 'pager\.py'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-write-code"
+    type: tool_used
+    tool: Write
+    input_match: 'pager\.py'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-mutate-git"
+    type: tool_used
+    tool: Bash
+    input_match: '\bgit\s+(add|commit|checkout|switch|restore|reset|stash|apply|merge|rebase|push)\b'
+    min: 0
+    max: 0
+    arm: both
+  - name: "does-not-fire-resolve-issue"
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?resolve-issue"'
+    min: 0
+    max: 0
+    arm: both
+  - name: "reports-and-points-at-fix-workflow"
+    type: llm
+    focus: last_message
+    weight: 1
+    arm: both
+    criteria: "The response reports that page_count now over-counts when the number of items is an exact multiple of the page size (or is zero), does not claim to have changed any file, and for the fix points the user at a separate fix workflow (such as resolve-issue) instead of applying one."

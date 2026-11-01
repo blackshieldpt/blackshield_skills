@@ -6,6 +6,7 @@ They do not prove that a model fires a skill; only the live eval does that.
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -20,9 +21,21 @@ BLUEPRINT_NEGATIVE = (
 CLICKHOUSE_CASE = (
     REPO_ROOT / "clickhouse" / "evals" / "clickhouse-fires-on-merge-tree-no-name"
 )
-REVIEW_CASE = REPO_ROOT / "coding" / "evals" / "review-fires-on-security-review"
+CODING_EVALS = REPO_ROOT / "coding" / "evals"
+REVIEW_CASE = CODING_EVALS / "review-fires-on-security-review"
+REVIEW_PROSE = CODING_EVALS / "review-silent-on-prose"
+REVIEW_READ_ONLY = CODING_EVALS / "review-stays-read-only"
+REVIEW_COMMENT = CODING_EVALS / "review-comment-without-pr-does-not-post"
 
-NEW_CASES = (BLUEPRINT_FIXTURE, BLUEPRINT_NEGATIVE, CLICKHOUSE_CASE, REVIEW_CASE)
+NEW_CASES = (
+    BLUEPRINT_FIXTURE,
+    BLUEPRINT_NEGATIVE,
+    CLICKHOUSE_CASE,
+    REVIEW_CASE,
+    REVIEW_PROSE,
+    REVIEW_READ_ONLY,
+    REVIEW_COMMENT,
+)
 
 BLUEPRINT_IMPORT = "github.com/oddbit-project/blueprint"
 
@@ -49,6 +62,12 @@ def graders(case: dict) -> list[dict]:
     """Return the case's grader entries."""
 
     return case.get("graders", [])
+
+
+def skill_call_matches(grader: dict, skill: str) -> bool:
+    """Whether the grader's input_match matches a Skill call for `skill`."""
+
+    return bool(re.search(grader["input_match"], f'{{"skill": "{skill}"}}'))
 
 
 class BlueprintFixtureTests(unittest.TestCase):
@@ -133,7 +152,7 @@ class ClickHouseCaseTests(unittest.TestCase):
 
 
 class ReviewRoutingTests(unittest.TestCase):
-    """A security-only review selects review, not audit or improve."""
+    """A security-only review selects review, not audit, improve or the built-in."""
 
     def test_review_security_case_prefers_review(self) -> None:
         case = load_case(REVIEW_CASE)
@@ -150,10 +169,99 @@ class ReviewRoutingTests(unittest.TestCase):
                 self.assertIn(negative, by_name)
                 self.assertEqual(by_name[negative].get("max"), 0)
 
-        self.assertFalse(
-            any("security-review" in name for name in by_name),
-            "security-review is a built-in command, not a skill in this repo",
-        )
+        # The built-in /security-review is the most likely mis-route.
+        security = by_name.get("does-not-fire-security-review")
+        self.assertIsNotNone(security, "missing the built-in security-review negative")
+        self.assertEqual(security.get("max"), 0)
+        self.assertTrue(skill_call_matches(security, "security-review"))
+        self.assertFalse(skill_call_matches(security, "coding:review"))
+
+    def test_review_positives_match_only_this_plugin(self) -> None:
+        for case_dir in sorted(CODING_EVALS.glob("review*/")):
+            case = load_case(case_dir)
+            for grader in graders(case):
+                if not grader.get("min"):
+                    continue
+                if grader.get("tool") != "Skill":
+                    continue
+                skill = grader["name"].removeprefix("fires-")
+                with self.subTest(case=case_dir.name, grader=grader["name"]):
+                    self.assertTrue(skill_call_matches(grader, f"coding:{skill}"))
+                    self.assertTrue(skill_call_matches(grader, skill))
+                    self.assertFalse(skill_call_matches(grader, f"other:{skill}"))
+
+    def test_review_fires_cases_exclude_the_builtin_code_review(self) -> None:
+        for name in ("review-fires-on-branch", "review-fires-on-pr-number"):
+            by_name = {g.get("name"): g for g in graders(load_case(CODING_EVALS / name))}
+            with self.subTest(case=name):
+                grader = by_name.get("does-not-fire-code-review")
+                self.assertIsNotNone(grader)
+                self.assertEqual(grader.get("max"), 0)
+                self.assertTrue(skill_call_matches(grader, "code-review"))
+
+
+class ReviewBehaviourTests(unittest.TestCase):
+    """Silent and behavioural review cases cannot pass vacuously."""
+
+    def test_prose_case_has_a_document_and_requires_engagement(self) -> None:
+        case = load_case(REVIEW_PROSE)
+        self.assertEqual(case["context"]["scaffold_script"], "place-files.sh")
+        self.assertTrue((REVIEW_PROSE / "files" / "docs" / "rollout-plan.md").is_file())
+        by_name = {g.get("name"): g for g in graders(case)}
+        self.assertEqual(by_name["reads-the-document"].get("min"), 1)
+        self.assertEqual(by_name["gives-prose-feedback"].get("type"), "llm")
+
+    def test_behaviour_cases_scaffold_a_branch_with_a_bug(self) -> None:
+        for case_dir in (REVIEW_READ_ONLY, REVIEW_COMMENT):
+            with self.subTest(case=case_dir.name):
+                case = load_case(case_dir)
+                self.assertEqual(case["context"]["scaffold_script"], "place-files.sh")
+                self.assertIn("Bash", case["execution"]["allowed_tools"])
+                script = read(case_dir / "place-files.sh")
+                self.assertIn("git remote add origin", script)
+                self.assertIn("git checkout -qb fix-last-page", script)
+                head = read(case_dir / "files" / "head" / "pager.py")
+                self.assertIn("return len(items) // size + 1", head)
+                self.assertTrue(
+                    any(g.get("type") == "llm" for g in graders(case)),
+                    "expected an llm grader on the final message",
+                )
+
+    def test_read_only_case_forbids_edits(self) -> None:
+        case = load_case(REVIEW_READ_ONLY)
+        self.assertIn("fix", read(REVIEW_READ_ONLY / "prompt.md"))
+        self.assertIn("Edit", case["execution"]["allowed_tools"])
+        by_name = {g.get("name"): g for g in graders(case)}
+        for name, tool in (
+            ("does-not-edit-code", "Edit"),
+            ("does-not-write-code", "Write"),
+            ("does-not-mutate-git", "Bash"),
+        ):
+            with self.subTest(grader=name):
+                self.assertEqual(by_name[name].get("tool"), tool)
+                self.assertEqual(by_name[name].get("max"), 0)
+        git = re.compile(by_name["does-not-mutate-git"]["input_match"])
+        self.assertTrue(git.search("git commit -qm fix"))
+        self.assertFalse(git.search("git worktree add /tmp/x abc123"))
+
+    def test_comment_case_forbids_posting(self) -> None:
+        case = load_case(REVIEW_COMMENT)
+        self.assertIn("--comment", read(REVIEW_COMMENT / "prompt.md"))
+        by_name = {g.get("name"): g for g in graders(case)}
+        post = by_name["does-not-post"]
+        self.assertEqual(post.get("max"), 0)
+        pattern = re.compile(post["input_match"])
+        for write in (
+            "gh pr comment 7 --body-file /tmp/r.md",
+            "gh api -X POST repos/o/r/issues/7/comments",
+            "gh api repos/o/r/issues/7/comments -f body=x",
+            'python3 "/s/_shared/forge.py" pr comment 7 --body-file /tmp/r.md',
+        ):
+            with self.subTest(write=write):
+                self.assertTrue(pattern.search(write))
+        for read_call in ("gh pr view 7", "gh api repos/o/r --jq .visibility"):
+            with self.subTest(read=read_call):
+                self.assertFalse(pattern.search(read_call))
 
 
 class AllCasesTests(unittest.TestCase):
@@ -182,8 +290,10 @@ class AllCasesTests(unittest.TestCase):
                     "case needs prompt.md or execution.prompt",
                 )
 
-    def test_new_cases_run_twice(self) -> None:
-        for case_dir in NEW_CASES:
+    def test_every_case_runs_twice(self) -> None:
+        case_dirs = sorted(path.parent for path in REPO_ROOT.glob("*/evals/*/case.yaml"))
+        self.assertTrue(set(NEW_CASES) <= set(case_dirs))
+        for case_dir in case_dirs:
             with self.subTest(case=case_dir.name):
                 case = load_case(case_dir)
                 self.assertEqual(

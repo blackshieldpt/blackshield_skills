@@ -2,8 +2,10 @@ schema_version: "1.1"
 name: "review-silent-on-prose"
 tags: [trigger, review]
 runs: 2
+context:
+  scaffold_script: place-files.sh
 execution:
-  max_turns: 4
+  max_turns: 6
   timeout_seconds: 180
   allowed_tools: [Read, Glob, Grep, Skill]
 graders:
@@ -21,3 +23,15 @@ graders:
     min: 0
     max: 0
     arm: both
+  - name: "reads-the-document"
+    type: tool_used
+    tool: Read
+    input_match: 'rollout-plan\.md'
+    min: 1
+    arm: both
+  - name: "gives-prose-feedback"
+    type: llm
+    focus: last_message
+    weight: 1
+    arm: both
+    criteria: "The response gives feedback on the clarity or tone of docs/rollout-plan.md that refers to its actual content (for example the vague timing such as \"week 3 or 4, depending\", the undefined \"once things look okay\" criterion, or the rollback section that names no trigger), rather than a code review or a findings table with a verdict."

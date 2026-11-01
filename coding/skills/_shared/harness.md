@@ -63,3 +63,10 @@ unauthenticated HTML scraping.
 A missing token is exit 3 and stops the write command. Forgejo/Gitea anonymous
 reads are allowed; writes are not. Token values never appear in output, and
 error messages name the environment variable only.
+
+## Scratchpad
+
+A skill's "scratchpad directory" is the host's per-session scratch directory
+when it has one (Claude Code does). Otherwise create one outside the repository
+with `mktemp -d`, use that one path for the whole run, record it in the report,
+and remove it when done.
