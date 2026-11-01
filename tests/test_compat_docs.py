@@ -22,7 +22,11 @@ ROWS = [
     ("`audit-codebase-security`", ["yes", "yes", "yes", "yes"]),
     ("`review` local scopes", ["yes", "yes", "yes", "yes"]),
     (
-        "`review` PR, `file-issue`, `resolve-issue`",
+        "`review` PR reads, `reconcile-plans` PR fallback",
+        ["yes", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`)"],
+    ),
+    (
+        "`file-issue`, `resolve-issue`, `review --comment`, `improve --issues`",
         ["yes", "planned", "planned", "planned"],
     ),
     ("Plan workflows", ["yes", "partial", "partial", "partial"]),
@@ -81,6 +85,7 @@ class CompatibilityDocsTest(unittest.TestCase):
             with self.subTest(area=area):
                 self.assertIn(area, by_area)
                 self.assertEqual(by_area[area], expected)
+        self.assertNotIn("`review` PR, `file-issue`, `resolve-issue`", by_area)
         self.assertIn("planned", section)
         self.assertIn("coding/skills/_shared", section)
 
@@ -90,7 +95,26 @@ class CompatibilityDocsTest(unittest.TestCase):
         )[0]
         body = normalized(section)
         self.assertIn("not claimed to run on Forgejo/Gitea", body)
-        self.assertIn("plan 014", body)
+        self.assertIn("until plans 017, 018 and 019 migrate them", body)
+        self.assertIn("still call `gh` directly", body)
+        self.assertIn("can confirm a merge but never proves its absence", body)
+        self.assertNotIn("plan 014", body)
+
+    def test_readme_forge_config_note(self):
+        section = read(README).split("## Compatibility", 1)[1].split(
+            "## Usage", 1
+        )[0]
+        for phrase in (
+            "`FORGE_TYPE`",
+            "`FORGE_URL`",
+            "`FORGE_TOKEN`",
+            "`GITEA_TOKEN`",
+            "`FORGEJO_TOKEN`",
+            "subpath",
+            "`gh auth`",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, section)
 
     def test_harness_contract(self):
         self.assertTrue(HARNESS.is_file(), "coding/skills/_shared/harness.md missing")

@@ -141,14 +141,24 @@ merges.
 | `blueprint`, `clickhouse` | yes | yes | yes | yes |
 | `audit-codebase-security` | yes | yes | yes | yes |
 | `review` local scopes | yes | yes | yes | yes |
-| `review` PR, `file-issue`, `resolve-issue` | yes | planned | planned | planned |
+| `review` PR reads, `reconcile-plans` PR fallback | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`) | yes (`forge.py`) |
+| `file-issue`, `resolve-issue`, `review --comment`, `improve --issues` | yes | planned | planned | planned |
 | Plan workflows | yes | partial | partial | partial |
 
 The forge adapter and the harness contract live in `coding/skills/_shared/`.
-Coding skills are migrated to them in plan 014. Until that migration lands, the
-forge-backed workflows (PR review, issue filing and issue resolution) are not
-claimed to run on Forgejo/Gitea: local review and the documentation-only skills
-do.
+`review` PR reads and the `reconcile-plans` PR fallback run through the adapter: `gh` on GitHub, the
+REST API on Forgejo/Gitea. On Forgejo/Gitea the reconcile fallback can confirm a merge but never proves
+its absence: an empty list there leaves the plan unverified. On OpenCode and Codex they also need `_shared` installed beside the skills,
+as the install commands below do. Plan workflows stay `partial` outside Claude Code until plans
+017–019 finish the migration; on Forgejo/Gitea their remaining gap is `improve --issues`. The write workflows (issue filing, issue resolution, `review --comment` and
+`improve --issues`) still call `gh` directly and are not claimed to run on Forgejo/Gitea, OpenCode or
+Codex until plans 017, 018 and 019 migrate them.
+
+Forgejo/Gitea configuration: set `FORGE_TYPE` (`gitea` or `forgejo`) when the
+host name does not identify the forge; `FORGE_URL` when the API is not at `https://<host>` (a subpath such as
+`https://example.org/git` works; it applies to every repository the skills read); and a token in
+`FORGE_TOKEN`, `GITEA_TOKEN` or `FORGEJO_TOKEN` for private repositories — public reads work
+anonymously. GitHub and GitHub Enterprise use `gh auth`.
 
 ## Usage
 
