@@ -37,7 +37,7 @@ a yes before the issue is created.
 ## 1. Check for duplicates
 
 ```bash
-gh issue list -R "$REPO" --state all --search "<distinctive words>" --limit 20 --json number,title,state,url
+python3 "$F" issue list --repo "$REPO" --state all --search "<distinctive words>" --limit 20
 ```
 
 Search on the symptom and the error text now; repeat on the function and file names once
@@ -147,13 +147,13 @@ mood suggests.
 | severity | `severity:critical`, `severity:high`, `severity:medium`, `severity:low` | Exactly one; graded below |
 
 Scope vocabulary, in order of precedence: the repo's project rules; the labels already on
-the repo (`gh label list -R "$REPO" --limit 200 --json name`); the components the project structure implies — top-level
+the repo (the `name` of each entry from `python3 "$F" label list --repo "$REPO" --limit 200`); the components the project structure implies — top-level
 directories or workspace members (`apps/api`, `web/`, `pkg/`), library or module names,
 and cross-cutting areas that exist as real artifacts (`ci` for pipeline files, `infra`
 for deploy/compose/images, `docs` for documentation-only). Name the component by what
 the repo calls it, not by a generic role. A label that does not exist yet is listed in
 the draft as "to be created" and created in §5, after the user's yes, with
-`gh label create -R "$REPO" <name> --description "<what it covers>" --color <hex>`; do not create
+`python3 "$F" label create <name> --repo "$REPO" --description "<what it covers>" --color <hex> --if-not-exists`; do not create
 more than the issue needs. Colours are fixed so labels read the same across
 repos:
 
@@ -190,7 +190,7 @@ test exists. Say both in the body instead.
 **No `severity:` label until rule 2's evidence exists.** Instead, one line under the lead
 saying what would settle it.
 
-**Body.** State the defect, then prove it. Prose under a **bold lead-in per item** (no `#` headings), executed results as a table or fenced block, citations and test lists as bullets — readable on the GitHub page without scrolling back. In this order:
+**Body.** State the defect, then prove it. Prose under a **bold lead-in per item** (no `#` headings), executed results as a table or fenced block, citations and test lists as bullets — readable on the forge's issue page without scrolling back. In this order:
 
 1. **What is wrong**, in one sentence, with the `path:line` it lives at, the code
    quoted, and the commit it is against.
@@ -215,7 +215,7 @@ behaviour with the `path:line` where the new behaviour would live, the desired b
 as numbered acceptance claims, and what is explicitly out of scope.
 
 Match the repo's existing issues in tone and length: read two recent ones first
-(`gh issue list -R "$REPO" --limit 5`, then `gh issue view -R "$REPO" <N>`), or the ones project rules point at.
+(`python3 "$F" issue list --repo "$REPO" --limit 5`, then `python3 "$F" issue view <N> --repo "$REPO"`), or the ones project rules point at.
 
 ## 4. Adversarial check of the draft
 
@@ -276,21 +276,17 @@ as found and not filed). Repeat the check once if the body changed materially.
 
 ## 5. Confirm and file
 
-Show the full title, labels (marking any to be created) and body to the user, with the
+Show the target repository (`$REPO`), the full title, labels (marking any to be created) and body to the user, with the
 check's per-claim verdicts. File only after an explicit yes; apply any edits they give
-verbatim. Then create the missing labels, then the issue; if a label cannot be created
-(no permission), file without it and say so.
+verbatim. Then create each label marked "to be created" with the §3 command (an existing label is returned unchanged), write the body to a scratchpad file, and create the issue. If a `label create` exits non-zero (for example 3, no permission), file without that label and say so.
 
 ```bash
-gh issue create -R "$REPO" --title "[high] ..." \
+python3 "$F" issue create --repo "$REPO" --title "[high] ..." \
   --label bug --label backend --label severity:high \
-  --body "$(cat <<'EOF'
-...
-EOF
-)"
+  --body-file <scratchpad>/issue-body.md
 ```
 
-Report the issue URL. When `resolve-issue` invoked this skill, return the number to it,
+Report the `url` field of its output. When `resolve-issue` invoked this skill, return the number to it,
 or that nothing was filed, and stop; the caller decides what follows (it resolves the
 issue it asked for, and only names a side defect in its PR body). Otherwise do not start a
 fix; if the user wants one, that is
