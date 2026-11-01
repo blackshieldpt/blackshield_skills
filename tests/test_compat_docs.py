@@ -191,6 +191,32 @@ class CompatibilityDocsTest(unittest.TestCase):
             with self.subTest(needle=needle):
                 self.assertIn(needle, body)
 
+    def test_review_roles_and_unvetted(self):
+        text = read(REVIEW)
+        body = flat(text)
+        role = "the reviewer role (Claude Code: general-purpose, model: opus)"
+        self.assertGreaterEqual(body.count(role), 2)
+        for needle in (
+            "the sweep role (Claude Code: Explore, model: haiku; sonnet when the sweep must judge)",
+            "n/a — unvetted (no subagents)",
+            "unvetted: <IDs or none>",
+            "or `unvetted`",
+            "≤3 in the reviewer role (Claude Code: general-purpose, model: opus), clusters: correctness+security",
+            "sonnet when the sweep must judge) for call-site sweeps only, with the same constraints block",
+            "If the host cannot start a fresh-context subagent, run the audit and refutation inline and label each such finding `unvetted`",
+            "refuter-confirmed, self-vetted or unvetted",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, body)
+        self.assertNotIn("`general-purpose`", body)
+        self.assertNotIn("`Explore`", body)
+
+    def test_review_subagents_forbid_forge_writes(self):
+        needle = "no forge writes (`gh` or `forge.py` issue/pr/label write commands"
+        for path in (REVIEW, PLAYBOOK):
+            with self.subTest(path=path.name):
+                self.assertIn(needle, flat(read(path)))
+
     def test_harness_keeps_unvetted_distinct_from_self_vetted(self):
         body = normalized(read(HARNESS))
         self.assertIn("`unvetted` is not `self-vetted`", body)
