@@ -247,6 +247,78 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(viewed.code, 0, viewed.err)
         self.assertIsNone(self.json(viewed)["viewer"])
 
+    def test_viewer_ghe_uses_hostname(self):
+        def gh(cmd):
+            if cmd[1:3] == ["api", "user"]:
+                return {"login": "rev"}
+            return {
+                "number": 4,
+                "title": "Crash",
+                "body": "trace",
+                "state": "OPEN",
+                "labels": [{"name": "bug"}],
+                "url": "https://github.company.tld/acme/widgets/issues/4",
+                "author": {"login": "dev"},
+                "createdAt": "2026-01-01T00:00:00Z",
+                "comments": [],
+            }
+
+        remote = "git@github.company.tld:acme/widgets.git"
+        user_call = ["gh", "api", "user", "--hostname", "github.company.tld"]
+        result = self.invoke(["viewer"], git_url=remote, gh=gh)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(result.gh, [user_call])
+
+        viewed = self.invoke(["issue", "view", "4"], git_url=remote, gh=gh)
+        self.assertEqual(viewed.code, 0, viewed.err)
+        self.assertEqual([c for c in viewed.gh if c[1:3] == ["api", "user"]], [user_call])
+        self.assertEqual(self.json(viewed)["viewer"], "rev")
+
+    def test_auth_passes_hostname(self):
+        result = self.invoke(["auth"], gh=lambda cmd: "")
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(
+            result.gh, [["gh", "auth", "status", "--hostname", "github.com"]]
+        )
+        ghe = self.invoke(
+            ["auth"], git_url="git@github.company.tld:acme/widgets.git", gh=lambda cmd: ""
+        )
+        self.assertEqual(ghe.code, 0, ghe.err)
+        self.assertEqual(
+            ghe.gh, [["gh", "auth", "status", "--hostname", "github.company.tld"]]
+        )
+
+    def test_gitea_viewer_null_on_auth_error(self):
+        def http(method, url, body):
+            if url == "https://git.company.tld/api/v1/user":
+                return ({"message": "token does not have at least one of required scope(s)"}, 403)
+            if url.endswith("/issues/4/comments"):
+                return []
+            if url.endswith("/issues/4"):
+                return {
+                    "number": 4,
+                    "title": "Crash",
+                    "body": "trace",
+                    "state": "open",
+                    "labels": [],
+                    "html_url": "https://git.company.tld/acme/widgets/issues/4",
+                    "user": {"login": "dev"},
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            raise AssertionError(f"unexpected call: {url}")
+
+        viewer = self.invoke(["viewer"], env=TOKEN_ENV, http=http)
+        self.assertEqual(viewer.code, 0, viewer.err)
+        self.assertEqual(self.json(viewer), {"login": None})
+        viewed = self.invoke(["issue", "view", "4"], env=TOKEN_ENV, http=http)
+        self.assertEqual(viewed.code, 0, viewed.err)
+        self.assertIsNone(self.json(viewed)["viewer"])
+
+        broken = self.invoke(
+            ["viewer"], env=TOKEN_ENV, http=lambda method, url, body: ({}, 500)
+        )
+        self.assertEqual(broken.code, 1, broken.err)
+
     # -- repository ------------------------------------------------------
 
     def test_repo_github_fields(self):
@@ -281,6 +353,48 @@ class ForgeAdapterTest(unittest.TestCase):
                 "has_issues": True,
                 "default_branch": "trunk",
             },
+        )
+
+    def test_repo_github_passes_repository_argument(self):
+        def gh(cmd):
+            return {
+                "nameWithOwner": "acme/widgets",
+                "owner": {"login": "acme"},
+                "name": "widgets",
+                "visibility": "PUBLIC",
+                "isPrivate": False,
+                "isFork": False,
+                "parent": None,
+                "hasIssuesEnabled": True,
+                "defaultBranchRef": {"name": "main"},
+                "url": "https://github.com/acme/widgets",
+            }
+
+        self.assertEqual(
+            forge.GH_REPO_FIELDS,
+            "nameWithOwner,owner,name,visibility,isPrivate,isFork,parent,"
+            "hasIssuesEnabled,defaultBranchRef,url",
+        )
+        result = self.invoke(["repo"], gh=gh)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(
+            result.gh,
+            [["gh", "repo", "view", "acme/widgets", "--json", forge.GH_REPO_FIELDS]],
+        )
+        ghe = self.invoke(["repo", "--repo", "github.company.tld/acme/widgets"], gh=gh)
+        self.assertEqual(ghe.code, 0, ghe.err)
+        self.assertEqual(
+            ghe.gh,
+            [
+                [
+                    "gh",
+                    "repo",
+                    "view",
+                    "github.company.tld/acme/widgets",
+                    "--json",
+                    forge.GH_REPO_FIELDS,
+                ]
+            ],
         )
 
     def test_repo_host_override_uses_ghe_selector(self):
@@ -358,6 +472,25 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(data[0]["state"], "open")
         self.assertEqual(data[0]["labels"], ["bug"])
         self.assertEqual(data[0]["author"], "dev")
+
+    def test_issue_list_gitea_all_states(self):
+        result = self.invoke(
+            ["issue", "list", "--state", "all", "--search", "crash", "--limit", "5"],
+            env=GITEA_ENV,
+            http=lambda method, url, body: [],
+        )
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(len(result.http), 1)
+        self.assertEqual(
+            urllib.parse.parse_qs(urllib.parse.urlsplit(result.http[0][1]).query),
+            {
+                "type": ["issues"],
+                "state": ["all"],
+                "q": ["crash"],
+                "limit": ["5"],
+                "page": ["1"],
+            },
+        )
 
     def test_issue_view_github_comments(self):
         def gh(cmd):

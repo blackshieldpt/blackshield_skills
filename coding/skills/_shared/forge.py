@@ -660,6 +660,12 @@ def _gh_selector(ctx: Context) -> list[str]:
     return ["-R", ctx.slug]
 
 
+def _gh_api_host(ctx: Context) -> list[str]:
+    if ctx.host and ctx.host != "github.com":
+        return ["--hostname", ctx.host]
+    return []
+
+
 GH_REPO_FIELDS = (
     "nameWithOwner,owner,name,visibility,isPrivate,isFork,parent,"
     "hasIssuesEnabled,defaultBranchRef,url"
@@ -678,7 +684,8 @@ GH_PR_LIST_FIELDS = (
 
 
 def _gh_repo(ctx: Context) -> dict[str, Any]:
-    data = _gh_json(["repo", "view"] + _gh_selector(ctx) + ["--json", GH_REPO_FIELDS])
+    # gh repo view has no -R option: pass the repository as its argument.
+    data = _gh_json(["repo", "view"] + _gh_selector(ctx)[1:] + ["--json", GH_REPO_FIELDS])
     owner = (data.get("owner") or {}).get("login") or ""
     name = data.get("name") or ""
     if not owner or not name:
@@ -992,9 +999,7 @@ def _gitea_repo(ctx: Context) -> dict[str, Any]:
 def _gitea_issue_list(
     ctx: Context, state: str, search: Optional[str], limit: int
 ) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {"type": "issues"}
-    if state != "all":
-        params["state"] = state
+    params: dict[str, Any] = {"type": "issues", "state": state}
     if search:
         params["q"] = search
     items = _paginate(ctx, _repo_path(ctx, "/issues"), params, limit)
@@ -1245,7 +1250,7 @@ def cmd_detect(args: argparse.Namespace) -> Any:
 
 def _gh_viewer_login(ctx: Context) -> Optional[str]:
     try:
-        data = _gh_json(["api", "user"])
+        data = _gh_json(["api", "user"] + _gh_api_host(ctx))
     except ForgeError as exc:
         if exc.code == EXIT_AUTH:
             return None
@@ -1258,7 +1263,12 @@ def _gh_viewer_login(ctx: Context) -> Optional[str]:
 def _gitea_viewer_login(ctx: Context) -> Optional[str]:
     if not ctx.token:
         return None
-    data = _http_json(ctx, "GET", "/user")
+    try:
+        data = _http_json(ctx, "GET", "/user")
+    except ForgeError as exc:
+        if exc.code == EXIT_AUTH:
+            return None
+        raise
     if not isinstance(data, dict):
         return None
     return data.get("login") or None
@@ -1271,9 +1281,15 @@ def cmd_viewer(ctx: Context) -> Any:
 
 
 def cmd_auth(ctx: Context) -> Any:
+    """Report {"authenticated": bool}; exit 0 either way, skills branch on the field.
+
+    On Gitea/Forgejo it means a token is configured; it is not checked against
+    /user, because a write-scoped token without read:user would read as
+    unauthenticated. A later exit 3 is authoritative.
+    """
     if ctx.forge == "github":
         try:
-            run_command(["gh", "auth", "status"])
+            run_command(["gh", "auth", "status", "--hostname", ctx.host])
         except ForgeError:
             return {"authenticated": False}
         return {"authenticated": True}
