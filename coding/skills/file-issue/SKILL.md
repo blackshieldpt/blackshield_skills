@@ -1,7 +1,7 @@
 ---
 name: file-issue
 description: "This skill should be used when the user asks to \"open an issue\", \"file an issue\", \"create an issue\", \"report this bug\", \"write this up as an issue\", or \"track this as an issue\" on a GitHub, Forgejo or Gitea repository. It investigates enough to name the mechanism, checks for duplicates, writes the issue as enumerable claims in the house style the resolve-issue skill consumes, has a fresh-context pass try to disprove every claim against the code, and files it through the bundled forge adapter (`gh` on GitHub) after the user confirms the text. Requires `gh` on GitHub or a token on Forgejo/Gitea."
-version: 0.5.1
+version: 0.6.0
 argument-hint: "[description | path:line | error text]"
 ---
 
