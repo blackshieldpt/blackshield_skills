@@ -15,6 +15,11 @@ brief, in this order.
 
 The verbatim boundary text from `review.md`, with "the reviewer" read as "this agent".
 
+## Redaction
+
+SKILL.md Setup's **Redaction** paragraph, verbatim. It covers the comment text, evidence
+table and failure output returned to the parent, which checks them again before posting.
+
 ## Values
 
 - `$S`, `<base>`, `<main>`, `<branch>`, `<pushed>` (or "none"), and the repo root.

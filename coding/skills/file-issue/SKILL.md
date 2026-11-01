@@ -1,7 +1,7 @@
 ---
 name: file-issue
 description: "This skill should be used when the user asks to \"open an issue\", \"file an issue\", \"create an issue\", \"report this bug\", \"write this up as an issue\", or \"track this as an issue\" on a GitHub repository. It investigates enough to name the mechanism, checks for duplicates, writes the issue as enumerable claims in the house style the resolve-issue skill consumes, has a fresh-context pass try to disprove every claim against the code, and files it with gh after the user confirms the text. Requires gh."
-version: 0.5.0
+version: 0.5.1
 argument-hint: "[description | path:line | error text]"
 ---
 
@@ -69,10 +69,12 @@ only other subagent is the adversarial check in §4. Never change the checkout a
 create a branch in it. Anything that must be written or run — a throwaway test, a base
 run, a clean tree at the reported commit — happens in a **scratchpad worktree**
 (`git worktree add <scratchpad>/issue-<sha> <sha>`, `<sha>` = the commit the finding is
-against; set up by you, removed with `git worktree remove --force` when done). Read,
-cite, and run `Explore` sweeps there whenever one exists. When the caller hands one in
+against; set up by you, removed with `git worktree remove --force` when the skill ends,
+whether or not anything is filed — a declined draft or a draft with no surviving claim
+included). Read, cite, and run `Explore` sweeps there whenever one exists. When the caller hands one in
 (`resolve-issue` does, together with `$REPO`), use it as-is: its HEAD is the commit the
-finding is against, skip the target-repo prompt, and do not create another. Before §4,
+finding is against, skip the target-repo prompt, do not create another, and leave its
+removal to the caller. Before §4,
 discard anything written there (`git -C <wt> checkout -- . && git -C <wt> clean -fd`)
 so the subagent gets a clean tree.
 
@@ -131,7 +133,8 @@ Stop investigating when every claim has its citation; do not fix anything.
 ## 3. Write the issue
 
 **Title:** `[severity] <what actually goes wrong, in the user's terms>`, severity one of
-`low` / `medium` / `high` / `critical` (or `feat`). Name the consequence, not the fix: `[high] bulk restore reports success after partial failure`,
+`low` / `medium` / `high` / `critical` (or `feat`), or `unrated` when the issue is filed
+without a `severity:` label (below). Name the consequence, not the fix: `[high] bulk restore reports success after partial failure`,
 never `Fix restore`.
 
 **Labels — three, every time: kind, scope, severity.** An issue with no scope cannot be
@@ -268,7 +271,9 @@ Act on the result:
 | consequence `inferred` | produce the command and output, or file without a `severity:` label, stating the open question |
 
 Regrade severity if the surviving claims change it. If nothing survives, tell the user
-there is no issue to file and why. Repeat the check once if the body changed materially.
+there is no issue to file and why (and the caller, if `resolve-issue` called this skill:
+it stops when this was the issue it was to resolve, and names a side defect in its PR body
+as found and not filed). Repeat the check once if the body changed materially.
 
 ## 5. Confirm and file
 
@@ -286,5 +291,8 @@ EOF
 )"
 ```
 
-Report the issue URL. Do not start a fix; if the user wants one, that is `resolve-issue`
-with the new number.
+Report the issue URL. When `resolve-issue` invoked this skill, return the number to it,
+or that nothing was filed, and stop; the caller decides what follows (it resolves the
+issue it asked for, and only names a side defect in its PR body). Otherwise do not start a
+fix; if the user wants one, that is
+`resolve-issue` with the new number.

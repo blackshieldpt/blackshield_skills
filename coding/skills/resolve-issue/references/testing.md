@@ -29,10 +29,13 @@ when the claim is that the behaviour does not exist yet.
 
 `base-run.sh -t` paths are relative to the repo root, wherever the command is run from,
 and must stay inside the repo; a directory (fixtures, snapshots) is accepted and copied
-whole. The command after `--` must name the test by a relative path: an absolute path
-runs the branch's copy of the file with the branch's configuration, not the base's, and
-`base-run.sh` refuses it. `mutate.sh <file>` is relative to the current directory, like
-any shell command.
+whole. The setup and the command after `--` run at the root of the base checkout, not in
+the caller's subdirectory, so the command names the test by a repo-relative path: an
+absolute path runs the branch's copy of the file with the branch's configuration, not the
+base's, and `base-run.sh` refuses it, also as an option value (`--x=/abs`, `VAR=/abs`).
+`mutate.sh <file>` is relative to the current directory, like any shell command. Both
+scripts act on the checkout the shell is in; `-C <dir>` points them at another one (a
+linked worktree, `parallel-worktrees.md`).
 
 ## Base run
 
@@ -47,6 +50,9 @@ interruption (the script's informational lines use the plain `base-run.sh:` pref
 gitignored setup the repo needs; project rules list them.
 
 Expected outcome: nonzero exit, and the failure text names the symptom from the issue.
+Exit 126 or 127, flagged by a `base-run.sh: warning:` line, means a command or file the
+command names was not found at base — usually a path written relative to a subdirectory.
+It is a reproduction only when the claim is that the thing is missing at base (a feature).
 When the test lives in a module with other tests, run that one test by name; unrelated
 failures in the same module are not the reproduction.
 
