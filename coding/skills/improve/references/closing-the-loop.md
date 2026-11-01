@@ -352,14 +352,15 @@ refreshed, what's rejected, and what's executable right now.
 
 ---
 
-## `--issues` — publish plans as GitHub issues
+## `--issues` — publish plans as issues
 
 Modifier on any planning invocation (`/coding:improve --issues`, `/coding:improve security --issues`). The flag is the user's authorization to create issues — never create them without it. In a non-interactive run (no user to confirm), skip the title confirmation but never the public-repo one: on a public repository, a plan that needs it is not published, and the report lists it as skipped.
 
-1. Preflight: `gh auth status` succeeds and the repo has a GitHub remote. If either fails, write the plan files as normal and say why issues were skipped.
-2. Visibility check: `gh repo view --json visibility`. If the repo is **public**, warn the user that issues are publicly visible and get explicit confirmation before publishing any plan that describes a security vulnerability, credential location, or other sensitive finding.
-3. Show the list of titles about to become issues; confirm once if interactive.
-4. Per plan: `gh issue create --title "<plan title>" --body-file <plan file>`. Labels: `improve` plus the category — apply only if the labels exist or can be created without erroring; skip labels rather than fail.
-5. Record each issue URL in the plan's Status block (`- **Issue**: <url>`) and the index.
+1. Preflight: `python3 "$F" repo` succeeds. The target follows file-issue's rule: with `fork: true` and a `parent`, the target is the parent, read with `python3 "$F" repo --repo <host>/<parent>`, falling back to the fork only when the parent's `has_issues` is false; with `fork: true` and no `parent`, skip issues and say so; otherwise the target is `<host>/<owner>/<name>`. The target's `has_issues` is true; set `REPO` to the target; `python3 "$F" auth --repo "$REPO"` prints `"authenticated": true`. If any fails, write the plan files as normal and say why issues were skipped, quoting `$F`'s stderr.
+2. Visibility check: the `visibility` field of the target's `repo` output. If it is `public`, warn the user that issues are publicly visible and get explicit confirmation before publishing any plan that describes a security vulnerability, credential location, or other sensitive finding.
+3. Show the list of titles about to become issues and the target repository; confirm once if interactive. In a non-interactive run, when the target is not origin's own repository (`<host>/<owner>/<name>` of the first `repo` output), publish nothing and list every plan as skipped with that reason.
+4. Labels, once per run: `python3 "$F" label create improve --repo "$REPO" --description "Plan written by coding:improve" --color 5319e7 --if-not-exists`, and per plan category used `python3 "$F" label create <category> --repo "$REPO" --description "coding:improve <category> plan" --color 0075ca --if-not-exists`. An existing label is returned unchanged. A label whose create exits non-zero is left off every issue and named in the report.
+5. Per plan: `python3 "$F" issue create --repo "$REPO" --title "<plan title>" --body-file <plan file> --label improve --label <category>` (only labels that exist after step 4). On a non-zero exit, print stderr, stop publishing and report which plans were published.
+6. Record each issue's `url` in the plan's Status block (`- **Issue**: <url>`) and the index.
 
 The plan file remains the source of truth; the issue is distribution. The self-containment rule pays off here — the issue body needs no edits to make sense to whoever (or whatever) picks it up. The body is the plan file verbatim, so before publishing, rewrite any local absolute path in the plan (a home directory, a scratchpad or a worktree) relative to the repository root.
