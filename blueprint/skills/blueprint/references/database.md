@@ -1,6 +1,6 @@
 # Database Patterns
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 12. Database Patterns
 

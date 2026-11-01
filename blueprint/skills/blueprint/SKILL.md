@@ -1,7 +1,7 @@
 ---
 name: blueprint
-description: "Guidelines for building Go applications on the Blueprint framework (github.com/oddbit-project/blueprint) and GoAuth authentication library (github.com/blackshieldpt/goauth). Covers architecture, providers, HTTP API patterns, database access, authentication, testing, migrations, error handling, and style rules. Use when code imports github.com/oddbit-project/blueprint or github.com/blackshieldpt/goauth, or user mentions Blueprint framework, Blueprint provider, Blueprint container, or GoAuth. Skip when the project has no Go files or no Blueprint/GoAuth dependency."
-version: 1.2.6
+description: "Guidelines for building Go applications on the Blueprint framework (github.com/oddbit-project/blueprint) and GoAuth authentication library (github.com/blackshieldpt/goauth). Covers architecture, providers, HTTP API patterns, database access, authentication, testing, migrations, error handling, and style rules. Use when code imports github.com/oddbit-project/blueprint or github.com/blackshieldpt/goauth, or user mentions Blueprint framework, Blueprint provider, Blueprint container, or GoAuth, including scaffolding a new Blueprint service. Skip for non-Go work, Go projects on another framework, and other things named Blueprint (Flask Blueprints, Unreal Engine Blueprints, Laravel Schema Blueprint, Blueprint.js, API Blueprint, design blueprints)."
+version: 1.3.0
 ---
 
 # Blueprint
@@ -25,9 +25,11 @@ Load the file for the area the task touches.
 | `references/rpc.md` | MessagePack inter-service RPC |
 | `references/testing.md` | testify suites, testcontainers, fixtures |
 | `references/logging.md` | Logger creation, methods, nil-logger fallback |
-| `references/providers.md` | SMTP, S3, TLS, NATS provider setup (ClickHouse writer is in service-layer §6.4–6.5; HMAC in authentication §8.11) |
+| `references/providers.md` | SMTP, S3, TLS, NATS provider setup (ClickHouse writer is in service-layer §6.4–6.5; HMAC in authentication §8.11). Kafka, etcd and Redis have no reference: read the provider's package docs |
 
 ## 1. Stack
+
+**Versions.** The references were checked against core `github.com/oddbit-project/blueprint` v0.16.0 and `github.com/blackshieldpt/goauth` v0.6.1, with providers httpserver v0.11.0, jwtprovider v0.9.0 (GoAuth signs through it; the PKCS#8 key rule is its), pgsql v0.10.0, clickhouse v0.12.0, etcd v0.12.0, nats v0.11.0, s3 v0.12.0, smtp v0.11.0, redis v0.11.0, franz v0.11.0, kafka v0.11.0, hmacprovider v0.10.0, htpasswd v0.9.0. Each `provider/*` directory with its own `go.mod` is a **separate Go module** with its own tags (`provider/httpserver/v0.11.0`), so `go get` it on its own; its version does not follow core's. GoAuth v0.6.1's `go.mod` only requires core v0.8.7, jwtprovider v0.8.2, pgsql v0.8.1 and redis v0.8.1, so a GoAuth dependency does not raise them to the versions above: require core and each provider the service uses explicitly. `provider/tls` and `provider/kv` ship inside core. Read the project's `go.mod` first; if it pins other versions, confirm a symbol with `go doc <package>.<Symbol>` before using a snippet.
 
 | Concern | Import |
 |---|---|
@@ -155,7 +157,7 @@ Struct tags on records, e.g. `` `json:"categoryId" db:"fk_category"` ``:
 1. No unnecessary abstractions — three similar lines beat a premature helper.
 2. Comments only for a non-obvious *why*.
 3. Return `error` up; sentinel errors with `errors.Is()`.
-4. Pass `context.Context` through constructors; services keep it and methods take it only when they do I/O that outlives the call.
+4. Pass `context.Context` through constructors. `db.NewRepository` binds it, and every `db.Repository` query runs with that ctx: a request ctx passed into a service method does not cancel repository queries. So service methods that only use a repository take no ctx (`GetById(id)`, `Update(id, req)`), and handlers call them without one. Add a `ctx` parameter only where the method uses it itself: `*Context` calls (`SelectContext`, `QueryRowxContext`), outbound clients, or GoAuth calls, which take `g.Request.Context()`.
 5. Accept a nil logger; default to `log.New("svcName")`.
 6. Pointer receivers on service and record types.
 7. `make([]*T, 0)` for empty return slices.

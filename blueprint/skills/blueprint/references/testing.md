@@ -1,6 +1,6 @@
 # Testing
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 14. Testing
 
@@ -57,7 +57,7 @@ suite.Assert().NotEmpty(value)
 | Target | Command | Purpose |
 |---|---|---|
 | `test` | `go test ./...` | All tests |
-| `test-unit` | `go test -short ./...` | Unit tests only |
+| `test-unit` | `go test -short ./...` | Unit tests only — `-short` skips nothing by itself: each integration test or suite must start with `if testing.Short() { t.Skip("integration") }` (in `SetupSuite`, `suite.T().Skip(...)`) |
 | `test-integration` | `go test ./service/... -v` | Integration tests (with testcontainers) |
 | `test-race` | `go test -race ./...` | Race detector |
 | `test-coverage` | `go test -coverprofile=coverage.out ./...` | Coverage report |

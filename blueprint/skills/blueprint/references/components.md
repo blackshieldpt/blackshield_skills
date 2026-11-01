@@ -1,6 +1,6 @@
 # Component Interfaces
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 11. Component Interfaces
 
@@ -31,15 +31,16 @@ job := threadpool.FuncRunner(func(ctx context.Context) { /* work */ })   // adap
 
 pool, err := threadpool.NewThreadPool(8, 1000, threadpool.WithLogger(logger))
 pool.Start(ctx)
-pool.Stop()   // blocking, waits for all workers to finish
+pool.Stop()                // blocking: runs every queued job, then returns; no time bound
+pool.StopWithContext(ctx)  // same, but gives up when ctx is done (cancels workers, returns ctx.Err())
 ```
 
 | Dispatch | Behaviour |
 |---|---|
-| `pool.Dispatch(job)` | blocking if queue full |
+| `pool.Dispatch(job)` | blocking if queue full; **panics** if the pool is stopped or never started — use `DispatchWithContext` on any path that can race shutdown |
 | `pool.TryDispatch(job)` | non-blocking, returns false if full |
 | `pool.DispatchWithTimeout(job, 100*time.Millisecond)` | returns false on timeout |
-| `pool.DispatchWithContext(ctx, job)` | returns error on context cancellation |
+| `pool.DispatchWithContext(ctx, job)` | returns error on context cancellation, or `ErrPoolNotStarted` when stopped |
 
 Introspection: `pool.GetQueueLen()` pending jobs, `pool.GetQueueCapacity()` max queue size,
 `pool.GetWorkerCount()` active workers, `pool.GetRequestCount()` total jobs processed.
@@ -62,7 +63,7 @@ func NewWorkerPool(cfg *Config, logger *log.Logger) (*WorkerPool, error) {
     return &WorkerPool{pool: pool, logger: logger}, nil
 }
 func (p *WorkerPool) Start(ctx context.Context) error { return p.pool.Start(ctx) }
-func (p *WorkerPool) Stop(ctx context.Context) error  { return p.pool.Stop() }
+func (p *WorkerPool) Stop(ctx context.Context) error  { return p.pool.StopWithContext(ctx) } // Stop() would ignore the shutdown deadline
 func (p *WorkerPool) Queue(ctx context.Context, fn WorkerFunc) error {
     return p.pool.DispatchWithContext(ctx, threadpool.FuncRunner(fn))
 }

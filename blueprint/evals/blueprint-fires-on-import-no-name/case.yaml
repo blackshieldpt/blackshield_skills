@@ -15,9 +15,9 @@ graders:
     input_match: '"skill"\s*:\s*"(?:[\w-]+:)?blueprint"'
     min: 1
     arm: both
-  - name: "mentions-blueprint-framework"
+  - name: "uses-blueprint-conventions"
     type: llm
     focus: last_message
     weight: 1
     arm: both
-    criteria: "The response identifies or uses the service's Blueprint framework (for example, mentions Blueprint, the httpserver provider, or github.com/oddbit-project/blueprint) when describing the endpoint."
+    criteria: "The response describes the endpoint with the Blueprint framework's own conventions, not just its import path: it uses at least two Blueprint-specific helpers or patterns, such as response.Success, response.Http404 / response.Http400 / response.Http500 from the httpserver response package, routes registered on the httpserver.Server group (srv.Group), or a per-domain error helper mapping service sentinel errors to those responses. Naming github.com/oddbit-project/blueprint or Blueprint alone, which go.mod already shows, does not pass; plain Gin code (g.JSON, c.Param) does not count."

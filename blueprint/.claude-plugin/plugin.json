@@ -1,6 +1,6 @@
 {
   "name": "blueprint",
-  "version": "1.2.6",
+  "version": "1.3.0",
   "license": "MIT",
   "description": "Guidelines for building Go applications on the Blueprint framework and GoAuth authentication library",
   "author": {

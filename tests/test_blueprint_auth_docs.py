@@ -50,21 +50,92 @@ def normalise(text: str) -> str:
 class AuthReferenceTests(unittest.TestCase):
     """Pin the fail-closed guidance and the corrected reference details."""
 
-    def test_fail_closed_guard(self) -> None:
+    def test_fail_closed_delegates_to_goauth(self) -> None:
         block = function_block(strip_go_comments(read(AUTH_DOC)), "func NewGoAuthService")
         plain = normalise(block)
-        self.assertIn('if privPEM == "" || pubPEM == ""', plain)
-        self.assertIn("if !allowEphemeral {", plain)
+        # The keys go to GoAuth as secure.KeyConfig; GoAuth's own Validate fails closed.
+        self.assertIn("cfg.JWT.PrivateKey = authCfg.JWTPrivateKey", plain)
+        self.assertIn("cfg.JWT.PublicKey = authCfg.JWTPublicKey", plain)
+        self.assertIn("return goauth.NewAuthService(ctx, cfg, store)", plain)
+        prose = normalise(read(AUTH_DOC))
+        self.assertIn("`JWTConfig.Validate` returns `model.ErrMissingJWTKey`", prose)
+        self.assertIn("calls `cfg.Validate()`", prose)
+
+    def test_no_removed_goauth_fields(self) -> None:
+        auth_doc = read(AUTH_DOC)
+        # PrivateKeyPEM/PublicKeyPEM were replaced by secure.KeyConfig in GoAuth v0.1.0.
+        for stale in ("PrivateKeyPEM", "PublicKeyPEM", "privPEM, pubPEM string, allowEphemeral bool"):
+            with self.subTest(stale=stale):
+                self.assertNotIn(stale, auth_doc)
+
+    def test_ephemeral_path_is_explicit_and_dev_only(self) -> None:
+        block = function_block(strip_go_comments(read(AUTH_DOC)), "func NewGoAuthService")
+        plain = normalise(block)
         self.assertIn(
-            'return nil, nil, fmt.Errorf("JWT signing keys are required")', plain
+            "if authCfg.AllowEphemeralKeys && authCfg.JWTPrivateKey.IsEmpty() "
+            "&& authCfg.JWTPublicKey.IsEmpty() {",
+            plain,
         )
-        # The guard must sit inside the key-emptiness check, not ahead of it.
+        self.assertIn("cfg.JWT.PrivateKey = secure.KeyConfig{Key: privPEM}", plain)
+        prose = normalise(read(AUTH_DOC))
+        self.assertIn("**dev/test only**", prose)
+        self.assertIn("A half-configured pair skips it", prose)
+
+    def test_ephemeral_keys_are_pkcs8(self) -> None:
+        block = normalise(
+            function_block(strip_go_comments(read(AUTH_DOC)), "func generateES256Keys")
+        )
+        self.assertIn("x509.MarshalPKCS8PrivateKey(priv)", block)
+        self.assertIn('Type: "PRIVATE KEY"', block)
+        self.assertIn('Type: "PUBLIC KEY"', block)
+        self.assertNotIn("EC PRIVATE KEY", block)
+        self.assertIn("rejects a SEC1 `EC PRIVATE KEY` block", normalise(read(AUTH_DOC)))
+
+    def test_goauth_tables_are_migrated(self) -> None:
+        auth_doc = read(AUTH_DOC)
+        self.assertIn("authStore := pgstore.New(m.Context, ctx.PgDb)", auth_doc)
+        self.assertIn("m.AbortFatal(authStore.Migrate(m.Context))", auth_doc)
         self.assertLess(
-            plain.index('if privPEM == "" || pubPEM == ""'),
-            plain.index("if !allowEphemeral {"),
-            "the allowEphemeral guard must be nested under the empty-key check",
+            auth_doc.index("authStore.Migrate(m.Context)"),
+            auth_doc.index("auth.NewGoAuthService(m.Context, authStore, cfg.Auth)"),
         )
-        self.assertNotIn("\n    if !allowEphemeral {", block)
+        self.assertIn("**before** the service's `PgMigrate`", normalise(auth_doc))
+
+    def test_ephemeral_branch_warns(self) -> None:
+        block = normalise(function_block(strip_go_comments(read(AUTH_DOC)), "func NewGoAuthService"))
+        self.assertIn('log.New("auth").Warn("using ephemeral JWT keys', block)
+
+    def test_login_uses_goauth_flows(self) -> None:
+        auth_doc = read(AUTH_DOC)
+        self.assertIn("s.appCtx.Auth.LoginLocal(g.Request.Context(), tenantID,", auth_doc)
+        self.assertIn("s.appCtx.Auth.RefreshToken(g.Request.Context(), req.RefreshToken, info)", auth_doc)
+        self.assertNotIn("s.svc.User.Authenticate", auth_doc)
+        self.assertNotIn("s.svc.User.RefreshToken", auth_doc)
+        # LoginLocal never returns ErrRateLimited/ErrAccountLocked; lockout is ErrInvalidCredentials.
+        self.assertNotIn("model.ErrRateLimited), errors.Is(err, model.ErrAccountLocked)", auth_doc)
+        self.assertIn("case errors.Is(err, model.ErrInvalidCredentials):", auth_doc)
+        self.assertIn("A locked account returns `model.ErrInvalidCredentials`", normalise(auth_doc))
+
+    def test_hasher_matches_blueprint(self) -> None:
+        auth_doc = read(AUTH_DOC)
+        self.assertIn("Verify(password, hash string) (bool, RehashFn, error)", auth_doc)
+        self.assertIn('hasher.Verify("password", hash)', auth_doc)
+        self.assertIn("hashing.NewArgon2Hasher(nil)", auth_doc)
+        self.assertNotIn("Verify(hashedPassword, password string)", auth_doc)
+        self.assertNotIn("12 parallelism", auth_doc)
+
+    def test_api_keys_are_secrets_and_never_empty(self) -> None:
+        auth_doc = read(AUTH_DOC)
+        self.assertIn("AuthKeys []secure.KeyConfig", auth_doc)
+        self.assertNotIn('"authKeys": ["key1", "key2"]', auth_doc)
+        self.assertIn('if strings.TrimSpace(key) == "" {', auth_doc)
+
+    def test_auditor_log_after_close_does_not_panic(self) -> None:
+        log_fn = normalise(function_block(read(AUTH_DOC), "func (a *PgAuditor) Log("))
+        self.assertIn("if a.closed {", log_fn)
+        self.assertLess(log_fn.index("if a.closed {"), log_fn.index("case a.ch <- event"))
+        close_fn = normalise(function_block(read(AUTH_DOC), "func (a *PgAuditor) Close()"))
+        self.assertIn("a.closed = true", close_fn)
 
     def test_validate_chain(self) -> None:
         auth_doc = read(AUTH_DOC)
@@ -104,18 +175,25 @@ class AuthReferenceTests(unittest.TestCase):
             auth_doc,
         )
         self.assertIn("project's JWT/claims helper package", auth_doc)
+        self.assertIn("removed in GoAuth v0.5.0", auth_doc)
+        # Plan-executor instructions must not leak into the skill.
+        self.assertNotIn("exemplar project", auth_doc)
+        self.assertNotIn("leave the snippets illustrative", auth_doc)
+
+    def test_hmac_snippet_uses_bpauth_alias(self) -> None:
+        auth_doc = read(AUTH_DOC)
+        for call in ("AuthMiddleware(hmacAuth)", "GetHMACIdentity(g)", "GetHMACDetails(g)"):
+            with self.subTest(call=call):
+                self.assertIn(f"bpauth.{call}", auth_doc)
+                self.assertNotIn(f" auth.{call}", auth_doc)
+                self.assertNotIn(f"(auth.{call}", auth_doc)
 
     def test_isempty_limitation(self) -> None:
         auth_doc = read(AUTH_DOC)
         self.assertIn("IsEmpty()", auth_doc)
         self.assertIn("IsEmpty() reports whether", auth_doc)
         self.assertIn("does not resolve", auth_doc)
-
-    def test_partial_key_pair(self) -> None:
-        block = function_block(strip_go_comments(read(AUTH_DOC)), "func NewGoAuthService")
-        plain = normalise(block)
-        self.assertIn('if privPEM != "" || pubPEM != ""', plain)
-        self.assertIn("both JWT signing keys are required", plain)
+        self.assertNotIn("The helper guard below", auth_doc)
 
     def test_auth_config_validate_is_fail_closed(self) -> None:
         block = function_block(

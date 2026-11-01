@@ -1,6 +1,6 @@
 # HTTP API Layer
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 7. HTTP API Layer
 
@@ -9,7 +9,6 @@ Part of the Blueprint skill. Section numbers match the original guide.
 ```go
 type ApiConfig struct {
     ApiServer *httpserver.ServerConfig `json:"apiServer"`
-    CORS      *security.SecurityConfig `json:"security"`
 }
 type ApiServer struct {
     *httpserver.Server
@@ -19,7 +18,7 @@ type ApiServer struct {
 
 func NewApiServer(cfg *ApiConfig, appCtx *core.AppContext, logger *log.Logger) (*ApiServer, error) {
     srv, err := httpserver.NewServer(cfg.ApiServer, logger)   // err → return nil, err
-    srv.UseDefaultSecurityHeaders()
+    srv.UseDefaultSecurityHeaders()   // CSP, HSTS, X-Frame-Options, nosniff, ... from security.DefaultSecurityConfig()
     api := &ApiServer{Server: srv, svc: appCtx.Svc, appCtx: appCtx}
     v1 := srv.Group("/v1")
     v1.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -29,6 +28,8 @@ func NewApiServer(cfg *ApiConfig, appCtx *core.AppContext, logger *log.Logger) (
     return api, nil
 }
 ```
+
+Use `UseDefaultSecurityHeaders()`. Do not load a `security.SecurityConfig` from JSON for `UseSecurityHeaders(cfg)`: the struct has no JSON tags, and the middleware sets only non-empty fields, so a partial or empty config (`"security": {}`) silently drops CSP, HSTS and X-Frame-Options. Pass a custom config only when every field is filled in code, starting from `security.DefaultSecurityConfig()`. CORS is separate: `security.CorsConfig` + `security.CORSMiddleware`.
 
 ### 7.2 Request Body Size Limit
 
@@ -128,14 +129,12 @@ func (v *ValidationError) Send(g *gin.Context) { response.ValidationError(g, v.f
 Map sentinels to HTTP; one helper per domain keeps handlers clean:
 
 ```go
-var errInternalError = fmt.Errorf("internal error")
-
 func productError(g *gin.Context, err error, message ...string) {
     if errors.Is(err, entity.ErrNotFound)  { response.Http404(g); return }
-    if errors.Is(err, entity.ErrDb)        { response.Http500(g, errInternalError); return }
+    if errors.Is(err, entity.ErrDb)        { response.Http500(g, err); return }   // logs err with the request's trace ID; the client sees only "Internal Server Error"
     if errors.Is(err, entity.ErrNotUnique) { NewValidationError().AddField("name", "name already exists").Send(g); return }
-    if len(message) > 0 { response.Http400(g, message[0]); return }
-    response.Http400(g, "operation failed")
+    if len(message) > 0 { response.Http400(g, message[0]); return }   // caller says it is a client error
+    response.Http500(g, err)   // unrecognised (driver, connection) errors: logged, generic 500
 }
 ```
 
@@ -148,7 +147,7 @@ func (s *ApiServer) _getRecord(g *gin.Context) (*entity.Record, error) {
     id, err := uuid.Parse(g.Param("id"))
     if err != nil { response.Http400(g, "invalid id"); return nil, err }
     record, err := s.svc.Product.GetById(id.String())
-    if err != nil { response.Http404(g) }
+    if err != nil { productError(g, err) }   // ErrNotFound → 404, ErrDb → 500; not every error is a 404
     return record, err
 }
 // handler: record, err := s._getRecord(g); if err != nil { return }  // response already sent
@@ -165,9 +164,9 @@ func (s *ApiServer) updateProduct(g *gin.Context) {
     if err != nil { response.Http400(g, "invalid id"); return }                          // 2
     req := &entity.ProductParams{}
     if !httpserver.ValidateJSON(g, req) { return }                                       // 3
-    record, err := s.svc.Product.Update(g.Request.Context(), id.String(), req)           // 4
+    record, err := s.svc.Product.Update(id.String(), req)                                // 4 (repository queries use the ctx bound at construction)
     if err != nil {
-        log.FromContext(g).Error(err, "error updating product", log.KV{"id": id})        // 5
+        log.FromContext(g.Request.Context()).Error(err, "error updating product", log.KV{"id": id}) // 5
         productError(g, err); return
     }
     response.Success(g, record)                                                          // 6
@@ -176,11 +175,10 @@ func (s *ApiServer) updateProduct(g *gin.Context) {
 
 ### 7.11 Pagination
 
-List endpoints: optional pagination via query params; utilities live in `pkg/pagination/`. When `page=0` or absent, return all rows with no pagination wrapper.
+List endpoints paginate through query params; utilities live in `pkg/pagination/`. A LIMIT always applies: an absent or invalid `page` means page 1, so no request reads the whole table.
 
 ```go
 type PaginationParams struct{ Page, PageSize int64 }
-func (p *PaginationParams) IsPaginated() bool { return p.Page > 0 }
 
 type PaginatedDetails struct {
     CurrentPage int64       `json:"currentPage"`
@@ -189,22 +187,26 @@ type PaginatedDetails struct {
     Rows        interface{} `json:"rows"`
 }
 
+const defaultPageSize, maxPageSize int64 = 100, 1000
+
+// Invalid, zero or negative values fall back to the defaults. pageSize is capped so a client
+// cannot request an unbounded page (and a zero pageSize cannot reach the division below);
+// page is capped so (page-1)*pageSize cannot overflow int64 into a huge uint offset.
 func ParsePagination(g *gin.Context) *pagination.PaginationParams {
-    params := &pagination.PaginationParams{PageSize: 100}
-    if v := g.Query("page"); v != "" { params.Page, _ = strconv.ParseInt(v, 10, 64) }
-    if v := g.Query("pageSize"); v != "" { params.PageSize, _ = strconv.ParseInt(v, 10, 64) }
+    params := &pagination.PaginationParams{Page: 1, PageSize: defaultPageSize}
+    if v, err := strconv.ParseInt(g.Query("page"), 10, 64); err == nil && v > 0 && v <= math.MaxInt64/maxPageSize { params.Page = v }
+    if v, err := strconv.ParseInt(g.Query("pageSize"), 10, 64); err == nil && v > 0 { params.PageSize = min(v, maxPageSize) }
     return params
 }
 
 func (r *EntityRepository) GetAll(params *pagination.PaginationParams) (*pagination.PaginatedDetails, error) {
-    totalCount, err := r.repo.Count(r.repo.SqlSelect())
+    totalCount, err := r.repo.Count()   // Count() takes no query: whole table; CountWhere(db.FV{...}) for filters
     if err != nil { return nil, err }
-    qry := r.repo.SqlSelect().Order(goqu.C("name").Asc())
-    if params.IsPaginated() { qry = qry.Limit(uint(params.PageSize)).Offset(uint((params.Page - 1) * params.PageSize)) }
+    qry := r.repo.SqlSelect().Order(goqu.C("name").Asc()).
+        Limit(uint(params.PageSize)).Offset(uint((params.Page - 1) * params.PageSize))
     result := make([]*entity.Entity, 0)
     if err = r.repo.Fetch(qry, &result); err != nil { return nil, err }
-    totalPages := int64(0)
-    if params.IsPaginated() { totalPages = (totalCount + params.PageSize - 1) / params.PageSize }
+    totalPages := (totalCount + params.PageSize - 1) / params.PageSize
     return &pagination.PaginatedDetails{CurrentPage: params.Page, TotalPages: totalPages, TotalCount: totalCount, Rows: result}, nil
 }
 ```
@@ -213,19 +215,27 @@ func (r *EntityRepository) GetAll(params *pagination.PaginationParams) (*paginat
 
 Stream CSV straight to the response. Set `Content-Disposition` with `attachment` to trigger browser download; write headers first, then stream rows; check `w.Error()` after flush — errors there are network issues (client disconnected), not data issues.
 
+Every user-controlled cell goes through `csvCell`: a value whose first non-blank character is `=`, `+`, `-`, `@` (or the fullwidth `＝＋－＠`, which some spreadsheets also accept), or that starts with tab or carriage return, is run as a formula when the file is opened in a spreadsheet (CSV injection), so prefix it with `'`.
+
 ```go
+func csvCell(s string) string {
+    if s != "" && strings.ContainsRune("\t\r", rune(s[0])) { return "'" + s }
+    if r, _ := utf8.DecodeRuneInString(strings.TrimLeft(s, " \t\r\n")); strings.ContainsRune("=+-@＝＋－＠", r) { return "'" + s }
+    return s
+}
+
 func exportEntitiesCSV(g *gin.Context, svc *service.Container) {
     entities, err := svc.Entity.List(nil)
-    if err != nil { log.FromContext(g).Errorf(err, "failed to list entities for CSV export"); response.Http500(g, errInternalError); return }
+    if err != nil { response.Http500(g, err); return }   // Http500 logs err
     fname := fmt.Sprintf("entities-%s.csv", time.Now().Format("20060102"))
     g.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fname))
     g.Header("Content-Type", "text/csv; charset=utf-8")
     g.Status(200)
     w := csv.NewWriter(g.Writer)
     w.Write([]string{"ID", "Name", "Email", "Status"})
-    for _, e := range entities { w.Write([]string{e.ID.String(), e.Name, e.Email, strconv.Itoa(e.Status)}) }
+    for _, e := range entities { w.Write([]string{e.ID.String(), csvCell(e.Name), csvCell(e.Email), strconv.Itoa(e.Status)}) }
     w.Flush()
-    if err := w.Error(); err != nil { log.FromContext(g).Errorf(err, "failed to write CSV") }
+    if err := w.Error(); err != nil { log.FromContext(g.Request.Context()).Errorf(err, "failed to write CSV") }
 }
 ```
 
@@ -250,8 +260,8 @@ sessionManager, err := srv.UseSession(sessionConfig, backend, logger)
 | In handlers | `sess := session.Get(g)`; `sess.Set("key", "value")`; `val, ok := sess.GetString("key")`; `sess.Has("key")`; `sess.Delete("key")`; typed getters e.g. `sess.GetInt("count")` |
 | Identity | Register custom types in `init()`: `gob.Register(&UserIdentity{})`. Login: `sess.SetIdentity(&UserIdentity{ID: user.ID, Username: user.Username})` then `sessionManager.Regenerate(g)` (prevents session fixation). Read: `identity, ok := sess.GetIdentity(); user := identity.(*UserIdentity)`. Logout: `sessionManager.Clear(g)` |
 | Flash messages | One-time values across a single redirect: `sess.FlashString("Operation successful!")`; after redirect `msg, ok := sess.GetFlashString()` |
-| Backends | `kv.NewMemoryKV()` (dev/single-instance), `redis.NewClient()` (production/distributed); custom backends implement `SetTTL`/`Get`/`Delete`/`Prune` |
-| Marshallers | GOB (default, binary, fast); JSON via `sessionStore.WithMarshaller(session.NewJSONMarshaller())`; or custom implementing `Marshaller` |
+| Backends | `kv.NewMemoryKV()` (dev/single-instance), `redis.NewClient()` (production/distributed); custom backends implement `kv.KV`: `SetTTL`/`Set`/`Get`/`Delete`/`Prune` |
+| Marshallers | GOB (default, binary, fast); or JSON / a custom `Marshaller`. `WithMarshaller` is a `*session.Store` method, and `srv.UseSession` builds its store internally, so wire it by hand: `store, err := session.NewStore(sessionConfig, backend, logger)`; `store.WithMarshaller(session.NewJSONMarshaller())`; `mgr, err := session.NewManager(sessionConfig, session.ManagerWithStore(store), session.ManagerWithLogger(logger))`; `srv.AddMiddleware(mgr.Middleware())` |
 
 ### 7.14 Request Helpers
 
@@ -261,7 +271,7 @@ Import `github.com/oddbit-project/blueprint/provider/httpserver/request`.
 |---|---|
 | `request.IsJSONRequest(g)` | Content-type detection: `g.JSON(200, data)` else `g.HTML(200, "template.html", data)` |
 | `request.ContentTypeJson` / `ContentTypeHtml` / `ContentTypeBinary` | `"application/json"` / `"text/html"` / `"application/octet-stream"` |
-| `router.Use(request.CSRFMiddleware())`; `csrfToken := request.GenerateCSRFToken(g)` | CSRF protection; pass token to templates |
+| `srv.UseCSRFProtection()` (or `router.Use(security.CSRFProtection())`, package `.../provider/httpserver/security`) | CSRF protection. Needs the session middleware (§7.13) first: the token lives in the session under `_csrf` and is sent in the `X-CSRF-Token` response header; unsafe methods must echo it in `X-CSRF-Token` or a `_csrf` form field, else 403. For templates read it with `sess.GetString("_csrf")`; `security.GenerateCSRFToken(g)` only returns a new random value and stores nothing |
 
 The `response` package (§7.6) auto-detects JSON vs HTML requests via `request.IsJSONRequest()` internally.
 

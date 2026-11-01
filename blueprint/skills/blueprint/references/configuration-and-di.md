@@ -1,6 +1,6 @@
 # Configuration / Dependency Injection
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 4. Configuration
 
@@ -58,15 +58,14 @@ m.Config.GetKey("log", logCfg)    // or load a single section
 
 ### 4.4 Config File Format
 
-JSON files in `config/`, one template per service:
+JSON files in `config/`, one template per service. `pgsql.ClientConfig` takes a single `dsn` (plus pool fields `maxOpenConns`, `maxIdleConns`, `connLifetime`, `connIdleTime`); it has no host/port/database keys, and an empty `dsn` fails `Validate()` with `ErrEmptyDSN`. Keep the password out of the file: the pgx driver reads `PGPASSWORD` from the environment when the DSN has none.
 
 ```json
 {
   "webApi": {
-    "apiServer": { "host": "0.0.0.0", "port": 8080 },
-    "security": {}
+    "apiServer": { "host": "0.0.0.0", "port": 8080 }
   },
-  "pgsql": { "host": "localhost", "port": 5432, "database": "myapp" },
+  "pgsql": { "dsn": "postgres://app@localhost:5432/myapp" },
   "etcd": { "endpoints": ["localhost:2379"] },
   "prometheus": { "host": "0.0.0.0", "port": 2111 },
   "log": { "level": "info" },
@@ -137,13 +136,16 @@ func NewContainer(ctx context.Context, conn *db.SqlClient, logger *log.Logger) *
 
 ### 5.3 Factory Functions
 
-Cross-cutting concerns are initialized by factories in `pkg/factories/`. Factories call `app.AbortFatal(err)` on unrecoverable errors and register destructors for cleanup.
+Cross-cutting concerns are initialized by factories in `pkg/factories/`. Factories call `app.AbortFatal(err)` on unrecoverable errors and register destructors for cleanup. `config` is `github.com/oddbit-project/blueprint/config`.
 
 ```go
 func BuildLog(app *blueprint.Container, logger *log.Logger) *log.Logger {
     logCfg := log.NewDefaultConfig()
     if err := app.Config.GetKey("log", logCfg); err != nil {
-        return logger // no custom config, return default
+        if errors.Is(err, config.ErrNoKey) {
+            return logger // no "log" section: keep the default
+        }
+        app.AbortFatal(err) // a "log" section that does not parse is a config error, not a default
     }
     app.AbortFatal(logCfg.Validate())
     app.AbortFatal(log.Configure(logCfg))

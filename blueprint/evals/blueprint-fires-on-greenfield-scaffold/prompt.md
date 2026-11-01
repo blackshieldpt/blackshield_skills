@@ -1,0 +1,1 @@
+This directory is empty. Plan a new Go microservice on Blueprint, the Go service framework our other services use: the cmd entry point, JSON config loading and validation, and an HTTP server with a GET /health route. Describe the files and the main code; do not create files.

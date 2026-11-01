@@ -1,6 +1,6 @@
 # Service Layer
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 6. Service Layer
 
@@ -154,15 +154,26 @@ Metrics ingestion: queue records, flush to ClickHouse periodically. Track health
 
 | Var | Name | Help |
 |---|---|---|
-| `writerRecordsDropped` | `panorama_writer_records_dropped_total` | Total records dropped due to queue full |
-| `writerRecordsFlushed` | `panorama_writer_records_flushed_total` | Total records successfully flushed to ClickHouse |
-| `writerFlushErrors` | `panorama_writer_flush_errors_total` | Total flush attempts that failed |
+| `writerRecordsDropped` | `app_writer_records_dropped_total` | Total records dropped due to queue full |
+| `writerRecordsFlushed` | `app_writer_records_flushed_total` | Total records successfully flushed to ClickHouse |
+| `writerFlushErrors` | `app_writer_flush_errors_total` | Total flush attempts that failed |
+
+Replace the `app_` prefix with the service's metric namespace.
 
 ```go
 type WriterConfig struct {
     QueueSize     int           // buffered channel capacity
     BatchSize     int           // rows per INSERT
     FlushInterval time.Duration // ticker period for partial batches
+}
+
+// Validate runs before the worker starts: time.NewTicker panics on a zero interval,
+// and BatchSize <= 0 would flush every record on its own.
+func (c *WriterConfig) Validate() error {
+    if c.QueueSize < 1 || c.BatchSize < 1 || c.FlushInterval <= 0 {
+        return fmt.Errorf("writer: queueSize, batchSize and flushInterval must be positive")
+    }
+    return nil
 }
 
 type BufferedWriter struct {
@@ -186,17 +197,33 @@ func (w *BufferedWriter) Add(record types.MetricRecord) {
     }
 }
 
-// worker: flush on ticker interval, draining the channel into a batch; final flush on stop
+// worker: flush when the batch reaches BatchSize or on the ticker for a partial batch;
+// on stop, drain what is queued and flush the rest.
 func (w *BufferedWriter) worker() {
     defer close(w.doneCh)
     ticker := time.NewTicker(w.config.FlushInterval)
     defer ticker.Stop()
+    batch := make([]types.MetricRecord, 0, w.config.BatchSize)
     for {
         select {
-        case <-ticker.C: w.flushSync()
-        case <-w.stopCh: w.flushSync(); return
+        case rec := <-w.queue:
+            if batch = append(batch, rec); len(batch) >= w.config.BatchSize { batch = w.flush(batch) }
+        case <-ticker.C:
+            batch = w.flush(batch)
+        case <-w.stopCh:
+            for len(w.queue) > 0 {
+                if batch = append(batch, <-w.queue); len(batch) >= w.config.BatchSize { batch = w.flush(batch) }
+            }
+            w.flush(batch)
+            return
         }
     }
+}
+
+func (w *BufferedWriter) flush(batch []types.MetricRecord) []types.MetricRecord {
+    if len(batch) == 0 { return batch }   // idle tick: no empty INSERT
+    // one INSERT of batch; writerRecordsFlushed / writerFlushErrors by w.tableName
+    return batch[:0]
 }
 ```
 
@@ -222,11 +249,17 @@ ub := s.repo.SqlUpdateX(record).
     WithOptions(&qb.UpdateOptions{ReturningFields: []string{"id", "name", "email", "updated_at"}}).
     Where(qb.Eq("id", id))
 
-// Map-based partial update with raw expressions
+// Map-based partial update: every value is bound as a $N parameter, never emitted as SQL
 ub := repo.SqlBuilder().Update("users", &entity.UserRecord{}).
-    FieldsValues(map[string]any{"last_login": time.Now(), "login_count": qb.Raw("login_count + 1")}).
+    FieldsValues(map[string]any{"last_login": time.Now(), "status": 1}).
     Where(qb.Eq("id", userID))
 repo.Do(ub)
+
+// SQL expressions in SET (counters, NOW()): use goqu; qb.Raw is a WHERE clause, and in
+// FieldsValues it would be bound as a parameter value
+repo.Update(repo.SqlUpdate().
+    Set(goqu.Record{"login_count": goqu.L("login_count + 1"), "last_login": goqu.L("NOW()")}).
+    Where(goqu.C("id").Eq(userID)))
 ```
 
 `qb.UpdateOptions` (field selection):
@@ -258,9 +291,11 @@ WHERE helpers (`qb`):
 Batch:
 
 ```go
-sql, args, err := builder.BuildSQLBatchInsert("users", records)
-stmts, argsList, err := builder.BuildSQLBatchUpdate("users", records, []string{"id"}, qb.DefaultUpdateOptions())
+builder := repo.SqlBuilder()
+sql, args, err := builder.BuildSQLBatchInsert("users", records)   // records []any
 ```
+
+`qb` has no batch update; issue one `SqlUpdateX(record)` per record inside a transaction.
 
 ### 6.7 DB Grid (Dynamic Query Builder)
 
@@ -290,7 +325,7 @@ var users []*UserRecord
 err := repo.QueryGrid(&UserRecord{}, query, &users)
 ```
 
-- Search types: `db.SearchNone` (0), `db.SearchStart` (1 — `%term`), `db.SearchEnd` (2 — `term%`), `db.SearchAny` (3 — `%term%`).
+- Search types: `db.SearchNone` (0, search rejected), `db.SearchStart` (1 — `term%`, starts with), `db.SearchEnd` (2 — `%term`, ends with), `db.SearchAny` (3 — `%term%`).
 - Sort constants: `db.SortAscending`, `db.SortDescending`.
 
 Custom filter functions and standalone usage (without repository):

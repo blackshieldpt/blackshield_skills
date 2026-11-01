@@ -1,40 +1,58 @@
 # Authentication & Credentials
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 8. Authentication & Credentials
 
 ### 8.1 GoAuth Integration
 
-Initialize GoAuth with an ECDSA key pair for JWT signing loaded from `secure.KeyConfig` (§8.9). Keys are required: `AuthConfig.Validate()` rejects startup when no key source is configured, and `NewGoAuthService` fails closed for callers that bypass validation. Ephemeral ES256 keys are generated only when `allowEphemeralKeys` is explicitly enabled, via a small project helper `generateES256Keys() (privPEM, pubPEM string, err error)` (`ecdsa.GenerateKey(elliptic.P256(), rand.Reader)` + PEM-encode) — **dev/test only**: every restart invalidates all tokens and replicas cannot verify each other's. Imports: `github.com/blackshieldpt/goauth`, `github.com/blackshieldpt/goauth/store/pgstore`.
+Initialize GoAuth with an ECDSA (ES256) key pair loaded from `secure.KeyConfig` (§8.9). GoAuth itself fails closed on missing keys: `goauth.NewAuthService` calls `cfg.Validate()`, and `JWTConfig.Validate` returns `model.ErrMissingJWTKey` when `JWT.PrivateKey` or `JWT.PublicKey` has no source (`SigningKey` for HS256/384/512). Do not re-implement that check; pass the `secure.KeyConfig` values straight into `cfg.JWT` and return GoAuth's error. `AuthConfig.Validate()` below only reports the same problem earlier, at config load, with a message naming the JSON keys. Imports: `github.com/blackshieldpt/goauth`, `github.com/blackshieldpt/goauth/store/pgstore`, `github.com/oddbit-project/blueprint/crypt/secure`.
+
+The one project-level decision is the ephemeral-key path. It runs only when `allowEphemeralKeys` is explicitly set **and** both key sources are empty; it is **dev/test only**: every restart invalidates all tokens and replicas cannot verify each other's. A half-configured pair skips it and fails in GoAuth's validation.
 
 ```go
-func NewGoAuthService(ctx context.Context, pgClient *db.SqlClient, privPEM, pubPEM string, allowEphemeral bool) (*goauth.AuthService, *pgstore.Store, error) {
-    store := pgstore.New(ctx, pgClient)
-    if privPEM == "" || pubPEM == "" {
-        if !allowEphemeral {
-            return nil, nil, fmt.Errorf("JWT signing keys are required")
-        }
-        if privPEM != "" || pubPEM != "" {
-            return nil, nil, fmt.Errorf("both JWT signing keys are required")
-        }
-        var err error
-        if privPEM, pubPEM, err = generateES256Keys(); err != nil {
-            return nil, nil, fmt.Errorf("generating JWT keys: %w", err)
-        }
-    }
+func NewGoAuthService(ctx context.Context, store *pgstore.Store, authCfg *AuthConfig) (*goauth.AuthService, error) {
     cfg := goauth.NewConfig()
     cfg.Local.Enabled = true
     cfg.JWT.SigningMethod = "ES256"
-    cfg.JWT.PrivateKeyPEM = privPEM
-    cfg.JWT.PublicKeyPEM = pubPEM
-    svc, err := goauth.NewAuthService(ctx, cfg, store)
-    if err != nil { return nil, nil, err }
-    return svc, store, nil
+    cfg.JWT.PrivateKey = authCfg.JWTPrivateKey
+    cfg.JWT.PublicKey = authCfg.JWTPublicKey
+    if authCfg.AllowEphemeralKeys && authCfg.JWTPrivateKey.IsEmpty() && authCfg.JWTPublicKey.IsEmpty() {
+        privPEM, pubPEM, err := generateES256Keys() // dev/test only
+        if err != nil {
+            return nil, fmt.Errorf("generating JWT keys: %w", err)
+        }
+        log.New("auth").Warn("using ephemeral JWT keys: tokens die on restart and replicas cannot verify each other; dev/test only")
+        cfg.JWT.PrivateKey = secure.KeyConfig{Key: privPEM}
+        cfg.JWT.PublicKey = secure.KeyConfig{Key: pubPEM}
+    }
+    // Validates first: a missing key source returns model.ErrMissingJWTKey, and a
+    // source that resolves to an empty or unparsable PEM fails while the signer is built.
+    return goauth.NewAuthService(ctx, cfg, store)
+}
+
+// generateES256Keys returns a PKCS#8 "PRIVATE KEY" and a PKIX "PUBLIC KEY" PEM.
+func generateES256Keys() (privPEM, pubPEM string, err error) {
+    priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+    if err != nil {
+        return "", "", err
+    }
+    privDER, err := x509.MarshalPKCS8PrivateKey(priv)
+    if err != nil {
+        return "", "", err
+    }
+    pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+    if err != nil {
+        return "", "", err
+    }
+    return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})),
+        string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})), nil
 }
 ```
 
-**Package aliases.** `bpauth` is `github.com/oddbit-project/blueprint/provider/httpserver/auth`. `httpauth` is the project's JWT/claims helper package — the package that exports `JWTMiddleware`, `GetUserIDFromContext`, and `GetClaimsFromContext`. Import it from the package that provides those symbols, or adapt the three call sites to the equivalent Blueprint/GoAuth API. If the exemplar project has no such package, leave the snippets illustrative and say so in the surrounding prose.
+Key files follow the same format: Blueprint's `jwtprovider` accepts only a PKCS#8 `PRIVATE KEY` block for ES256 and rejects a SEC1 `EC PRIVATE KEY` block (`ErrInvalidPrivateKey`). Generate with `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256`, or convert an existing key with `openssl pkcs8 -topk8 -nocrypt`.
+
+**Package aliases.** `bpauth` is `github.com/oddbit-project/blueprint/provider/httpserver/auth`. GoAuth ships no HTTP layer: its `httpauth` package was removed in GoAuth v0.5.0, with no replacement. In these snippets `httpauth` is the project's JWT/claims helper package, which the service owns. It exports `JWTMiddleware` (reads the bearer token, calls `TokenService().ParseAccessToken`, stores the `*token.TokenClaims` in the Gin context), `GetClaimsFromContext`, and `GetUserIDFromContext`. GoAuth's `examples/` directory has a reference `jwtMiddleware` to copy.
 
 Config carries the keys as `secure.KeyConfig` (§8.9):
 
@@ -59,18 +77,20 @@ func (c *AuthConfig) Validate() error {
 
 `AllowEphemeralKeys` is for local development and tests only. A production deployment must load the keys from `KeyEnvVar` or `KeyFile`; the flag must not be set in a shipped configuration.
 
-Note the limit of this check: `secure.KeyConfig`'s IsEmpty() reports whether a **source field** (`Key`, `KeyEnvVar`, `KeyFile`) is blank; it does not resolve the value. A configured `KeyEnvVar` whose variable is unset still passes `Validate()` and yields an empty PEM. The helper guard below is the post-`Fetch` backstop for that case.
+Note the limit of this check: `secure.KeyConfig`'s IsEmpty() reports whether a **source field** (`Key`, `KeyEnvVar`, `KeyFile`) is blank; it does not resolve the value. A configured `KeyEnvVar` whose variable is unset still passes `Validate()` (both this one and GoAuth's) and resolves to an empty PEM. GoAuth then fails while building the signer, because `jwtprovider` cannot parse an empty PEM, so startup still stops.
 
-Wire into `AppContext` in `Build()`:
+Wire into `AppContext` in `Build()`. GoAuth's tables (`auth_users`, `auth_api_keys`, and the rest) come from its own migrations, so run `Store.Migrate` under the same `-migrate` flag and **before** the service's `PgMigrate`: service tables that reference `auth_users` need it to exist. Place this block ahead of the `PgMigrate` line in `Build()` (SKILL.md §2):
 
 ```go
 if cfg.Auth == nil {
     m.AbortFatal(fmt.Errorf("auth config is required"))
 }
 m.AbortFatal(cfg.Auth.Validate())
-privPEM, err := cfg.Auth.JWTPrivateKey.Fetch(); m.AbortFatal(err)
-pubPEM, err := cfg.Auth.JWTPublicKey.Fetch();  m.AbortFatal(err)
-authSvc, authStore, err := auth.NewGoAuthService(m.Context, ctx.PgDb, privPEM, pubPEM, cfg.Auth.AllowEphemeralKeys)
+authStore := pgstore.New(m.Context, ctx.PgDb)
+if m.args.Migrate != nil && *m.args.Migrate {
+    m.AbortFatal(authStore.Migrate(m.Context))
+}
+authSvc, err := auth.NewGoAuthService(m.Context, authStore, cfg.Auth)
 m.AbortFatal(err)
 ctx.Auth = authSvc; ctx.AuthStore = authStore
 ```
@@ -90,36 +110,63 @@ v1.GET("/product", api.listProducts)                                  // protect
 
 Internal / machine-to-machine services without user sessions: Blueprint token list auth instead of GoAuth. Static key list, `X-API-Key` header. All routes registered after `UseAuth()` require a valid key; no login/refresh flow.
 
+Keys are secrets: declare each as a `secure.KeyConfig` (§8.9), never inline in the JSON. Reject an empty resolved key at startup: `NewAuthTokenList` compares the header with each key, and a missing header reads as `""`, so an empty key admits every request that sends no `X-API-Key`.
+
 ```go
 type ApiConfig struct {
     Server   *httpserver.ServerConfig `json:"server"`
-    AuthKeys []string                 `json:"authKeys"`
+    AuthKeys []secure.KeyConfig       `json:"authKeys"`
 }
-// config: {"api": {"server": {"host": "0.0.0.0", "port": 8080}, "authKeys": ["key1", "key2"]}}
+// config: {"api": {"server": {"host": "0.0.0.0", "port": 8080},
+//          "authKeys": [{"keyEnvVar": "API_KEY_BILLING"}, {"keyFile": "/run/secrets/api_key_reports"}]}}
 
+keys := make([]string, 0, len(cfg.AuthKeys))
+for i, kc := range cfg.AuthKeys {
+    key, err := kc.Fetch()
+    if err != nil { return nil, err }
+    if strings.TrimSpace(key) == "" { return nil, fmt.Errorf("api: authKeys[%d] resolves to an empty key", i) }
+    keys = append(keys, key)
+}
+if len(keys) == 0 { return nil, fmt.Errorf("api: at least one API key is required") }
 srv, err := httpserver.NewServer(cfg.Server, logger)   // err → return nil, err
-srv.UseAuth(bpauth.NewAuthTokenList("X-API-Key", cfg.AuthKeys))
+srv.UseAuth(bpauth.NewAuthTokenList("X-API-Key", keys))
 ```
 
 ### 8.4 Login / Token Flow
+
+Call GoAuth's `LoginLocal` and `RefreshToken` directly. They carry the failed-login throttling and lockout, user-enumeration protection (`ProtectEnumeration`), 2FA challenge and refresh-token fingerprint checks; a project `Authenticate` that looks the user up and verifies the hash itself skips all of them. A locked account returns `model.ErrInvalidCredentials`, the same as a wrong password, so as not to reveal that it exists. Request-rate limiting (429) is the HTTP layer's job (`srv.UseRateLimiting`, or a per-route limiter as in §7.3); `LoginLocal` does not return `ErrRateLimited`. Imports: `github.com/blackshieldpt/goauth/model`, `github.com/blackshieldpt/goauth/token`.
 
 ```go
 func (s *ApiServer) login(g *gin.Context) {
     var req LoginRequest
     if !httpserver.ValidateJSON(g, &req) { return }
-    tokens, user, err := s.svc.User.Authenticate(req.Email, req.Password)
-    if err != nil { log.FromContext(g).Error(err, "login failed"); response.Http401(g); return }
-    response.Success(g, &LoginResponse{AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken, Name: user.Name})
+    info := token.NewSessionInfo(g.ClientIP(), g.Request.UserAgent())
+    tokens, err := s.appCtx.Auth.LoginLocal(g.Request.Context(), tenantID, req.Email, req.Password, info)
+    var twoFA *model.TwoFactorRequiredError
+    switch {
+    case err == nil:
+        response.Success(g, tokens)
+    case errors.As(err, &twoFA):
+        response.Success(g, gin.H{"twoFactorRequired": true, "challengeToken": twoFA.ChallengeToken})
+    case errors.Is(err, model.ErrInvalidCredentials):
+        response.Http401(g)   // GoAuth already logs the failure at Warn
+    default:
+        log.FromContext(g.Request.Context()).Error(err, "login failed")
+        response.Http401(g)
+    }
 }
 
 func (s *ApiServer) refreshToken(g *gin.Context) {
     var req RefreshTokenRequest
     if !httpserver.ValidateJSON(g, &req) { return }
-    tokens, err := s.svc.User.RefreshToken(req.RefreshToken, nil)
+    info := token.NewSessionInfo(g.ClientIP(), g.Request.UserAgent())   // same fingerprint inputs as login
+    tokens, err := s.appCtx.Auth.RefreshToken(g.Request.Context(), req.RefreshToken, info)
     if err != nil { response.Http401(g); return }
     response.Success(g, tokens)
 }
 ```
+
+`tenantID` is the service's tenant (`uuid.UUID`; a fixed value in a single-tenant service).
 
 ### 8.5 Extracting Current User
 
@@ -137,24 +184,24 @@ func (s *ApiServer) CurrentUser(g *gin.Context) *entity.UserInfo {
 
 ### 8.6 Password Hashing (Argon2id)
 
-Use `Argon2Hasher` for stored passwords; the interface supports transparent rehashing when parameters change.
+GoAuth hashes its own users' passwords; this is for passwords the service stores outside GoAuth. Use Blueprint's `hashing.PasswordHasher` (`github.com/oddbit-project/blueprint/crypt/hashing`); it supports transparent rehashing when parameters change. **Argument order: `Verify(password, hash)`**, plaintext first.
 
 ```go
 type PasswordHasher interface {
     Generate(password string) (string, error)
-    Verify(hashedPassword, password string) (bool, func() (string, error), error)
+    Verify(password, hash string) (bool, RehashFn, error)   // RehashFn = func() (string, error)
 }
 
-hasher := auth.NewArgon2Hasher()
+hasher, err := hashing.NewArgon2Hasher(nil)   // nil → hashing.NewArgon2IdConfig()
 hash, err := hasher.Generate("password")
-match, rehashFn, err := hasher.Verify(hash, "password")
+match, rehashFn, err := hasher.Verify("password", hash)
 if match && rehashFn != nil { newHash, _ := rehashFn() }   // re-hash with current parameters
 ```
 
-- `Generate()` returns `$argon2id$v=19$m=65536,t=4,p=12$salt$hash`.
+- `Generate()` returns `$argon2id$v=19$m=65536,t=4,p=<cpus>$salt$hash`.
 - `Verify()` returns match bool + optional rehash func (non-nil when the stored hash uses outdated parameters).
 - Constant-time comparison (`crypto/subtle.ConstantTimeCompare`).
-- Defaults: 64 MB memory, 4 iterations, 12 parallelism, 16-byte salt, 32-byte key.
+- Defaults (`NewArgon2IdConfig`): 64 MB memory, 4 iterations, parallelism `runtime.NumCPU()`, 16-byte salt, 32-byte key.
 
 ### 8.7 Blueprint Crypt Utilities
 
@@ -224,6 +271,8 @@ type PgAuditor struct {
     logger *log.Logger
     ch     chan AuditEvent
     done   chan struct{}
+    mu     sync.RWMutex
+    closed bool
 }
 
 func NewPgAuditor(ctx context.Context, client *db.SqlClient, logger *log.Logger) *PgAuditor {
@@ -232,12 +281,25 @@ func NewPgAuditor(ctx context.Context, client *db.SqlClient, logger *log.Logger)
     return a
 }
 func (a *PgAuditor) Log(_ context.Context, event AuditEvent) {
+    a.mu.RLock()
+    defer a.mu.RUnlock()
+    if a.closed {   // a send on the closed channel would panic the caller
+        a.logger.Warn("auditor closed, dropping event: " + event.Event)
+        return
+    }
     select {
     case a.ch <- event:
     default: a.logger.Warn("audit buffer full, dropping event: " + event.Event)
     }
 }
-func (a *PgAuditor) Close() { close(a.ch); <-a.done }
+func (a *PgAuditor) Close() {
+    a.mu.Lock()
+    if a.closed { a.mu.Unlock(); return }
+    a.closed = true
+    close(a.ch)
+    a.mu.Unlock()
+    <-a.done
+}
 func (a *PgAuditor) loop()  { defer close(a.done); for evt := range a.ch { a.persist(evt) } }
 ```
 
@@ -258,7 +320,7 @@ Event type constants per domain: `AuditLoginLocal = "login.local"`, `AuditLoginO
 
 ### 8.11 HMAC Authentication
 
-HMAC-SHA256 signatures with optional replay protection (nonces + timestamps). Modes: **simple** (`SHA256Sign`/`SHA256Verify`) and **secure** (`Sign256`/`Verify256`, nonce-based replay prevention). Imports: `.../crypt/secure`, `.../provider/hmacprovider`, `.../provider/hmacprovider/store`, `.../provider/httpserver/auth` (all under `github.com/oddbit-project/blueprint`).
+HMAC-SHA256 signatures with optional replay protection (nonces + timestamps). Modes: **simple** (`SHA256Sign`/`SHA256Verify`) and **secure** (`Sign256`/`Verify256`, nonce-based replay prevention). Imports: `.../crypt/secure`, `.../provider/hmacprovider`, `.../provider/hmacprovider/store`, `.../provider/httpserver/auth` as `bpauth` (all under `github.com/oddbit-project/blueprint`).
 
 ```go
 key, _ := secure.GenerateKey()
@@ -279,16 +341,16 @@ keyId, valid, _ := provider.SHA256Verify(strings.NewReader(data), hash)
 
 // HTTP middleware
 hmacAuth := bpauth.NewHMACAuthProvider(provider)
-router.Use(auth.AuthMiddleware(hmacAuth))
-keyId, ok := auth.GetHMACIdentity(g)                       // in handler
-keyId, timestamp, nonce, ok := auth.GetHMACDetails(g)
+router.Use(bpauth.AuthMiddleware(hmacAuth))
+keyId, ok := bpauth.GetHMACIdentity(g)                     // in handler
+keyId, timestamp, nonce, ok := bpauth.GetHMACDetails(g)
 ```
 
 | Item | Detail |
 |---|---|
 | Headers | `X-HMAC-Hash`, `X-HMAC-Timestamp`, `X-HMAC-Nonce` |
-| Key providers | `NewSingleKeyProvider` (single key); multi-tenant implements `HMACKeyProvider` (`GetKey(keyId) (*secure.Credential, error)`, `ListKeyIds() []string`) |
-| Nonce stores | Memory `store.NewMemoryNonceStore` (TTL/eviction), Redis `store.NewRedisStore`, KV `store.NewKvStore`; eviction policies `EvictNone()`, `EvictAll()`, `EvictHalfLife()` |
+| Key providers | `NewSingleKeyProvider` (single key); multi-tenant implements `HMACKeyProvider` (one method: `FetchSecret(keyId string) (*secure.Credential, error)`) |
+| Nonce stores | Memory `store.NewMemoryNonceStore` (TTL/eviction), Redis `store.NewRedisNonceStore(client, ttl, opts...)`, KV `store.NewKvStore(kv, ttl)`; eviction policies `EvictNone()`, `EvictAll()`, `EvictHalfLife()` |
 | keyId | Cannot contain dots (`.`) — used internally for concatenation |
 
 ### 8.12 HTPasswd
@@ -305,6 +367,6 @@ container, err := htpasswd.NewFromFile("/path/to/.htpasswd")
 container.Write(file) // io.Writer
 ```
 
-Hash algorithms: bcrypt (default, recommended), Apache MD5 (`$apr1$`), SHA256 (`{SHA256}`), SHA512 (`{SHA512}`), SHA1 (`{SHA}`, deprecated), crypt (deprecated), plain (dev only).
+Hash algorithms: bcrypt (default, recommended), Argon2 (`HashTypeArgon2`; writes `$argon2id$`, verifies `$argon2i$` and `$argon2id$`), Apache MD5 (`$apr1$`), SHA256 (`{SHA256}`), SHA512 (`{SHA512}`), SHA1 (`{SHA}`, deprecated), crypt (deprecated), plain (dev only).
 
 ---

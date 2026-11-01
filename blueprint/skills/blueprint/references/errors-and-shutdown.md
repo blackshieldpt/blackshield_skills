@@ -1,6 +1,6 @@
 # Error Handling / Graceful Shutdown
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 9. Error Handling
 
@@ -37,7 +37,7 @@ func (r *EntityRepository) GetByID(id uuid.UUID) (*entity.Entity, error) {
 
 // Handler
 entity, err := svc.Entity.GetByID(id)
-if err != nil { response.Http500(g, errInternalError); return }
+if err != nil { response.Http500(g, err); return }   // logs err; the client sees a generic 500
 if entity == nil { response.Http404(g); return }
 ```
 

@@ -1,10 +1,12 @@
 # Providers
 
-Part of the Blueprint skill. Section numbers match the original guide.
+Part of the Blueprint skill. Section numbers (`§N.N`) are the cross-reference anchors that SKILL.md and the other reference files cite.
 
 ## 19. Providers
 
 Snippets elide error handling for brevity; in real code every `_` below is `err` checked and returned per the style rules.
+
+Kafka (`provider/franz`), etcd (`provider/etcd`, beyond the configuration-and-di §5.3 factory) and Redis (`provider/redis`) have no reference in this skill. Before using one, read its package docs at the version `go.mod` pins (`go doc github.com/oddbit-project/blueprint/provider/franz`, or the module's README) instead of inferring the API from the providers below.
 
 ### 19.1 SMTP Provider
 
@@ -75,14 +77,13 @@ tlsConfig, err := clientCfg.TLSConfig()
 serverCfg := &tls.ServerConfig{
     TLSCert: "/path/to/server.crt", TLSKey: "/path/to/server.key",
     TLSAllowedCACerts:  []string{"/path/to/ca.crt"}, // client cert verification
-    TLSCipherSuites:    []string{"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"},
-    TLSMinVersion: "1.3", TLSMaxVersion: "1.3",
+    TLSMinVersion: "TLS13", TLSMaxVersion: "TLS13", // only "TLS12" and "TLS13" are accepted; keep the 1.3 default unless a client needs 1.2
     TLSAllowedDNSNames: []string{"client.example.com"},
     TLSEnable: true,
 }
 ```
 
-Defaults: TLS 1.3, strong cipher suites. Encrypted private keys via `TlsKeyCredential` (env var or file).
+Defaults: minimum TLS 1.3, strong cipher suites. Version strings are `"TLS12"` / `"TLS13"`; anything else (`"1.3"`, `"TLS1.3"`) fails with `ErrInvalidTlsVersion`. `TLSCipherSuites` only affects TLS 1.2 handshakes: Go's `crypto/tls` does not let you configure TLS 1.3 suites, so with the default 1.3 minimum the list has no effect. Lower `TLSMinVersion` to `"TLS12"` (and set `TLSCipherSuites`) only for a named client that cannot do 1.3. Encrypted private keys via `TlsKeyCredential` (env var or file).
 
 ### 19.4 NATS Provider
 
@@ -101,7 +102,7 @@ consumerCfg := &nats.ConsumerConfig{URL: "nats://localhost:4222", Subject: "even
     AuthType: nats.AuthTypeNone, ConsumerOptions: nats.ConsumerOptions{QueueGroup: "my-service"}}
 consumer, _ := nats.NewConsumer(consumerCfg, logger); defer consumer.Disconnect()
 consumer.Subscribe(ctx, func(ctx context.Context, msg nats.Message) error {
-    log.Info("received", log.KV{"data": string(msg.Data)})
+    logger.Info("received", log.KV{"data": string(msg.Data)})   // package-level log.Info needs ctx first: log.Info(ctx, msg, log.ContextFields{...})
     return nil
 })
 ```
