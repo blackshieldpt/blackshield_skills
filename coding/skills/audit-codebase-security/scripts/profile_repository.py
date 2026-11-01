@@ -18,6 +18,15 @@ DEFAULT_MAX_FILES = 200_000
 DEFAULT_CONTENT_BUDGET = 16 * 1024 * 1024
 MAX_FILE_PREFIX = 256 * 1024
 MAX_EVIDENCE_PATHS = 12
+MAX_ENTRY_POINTS = 50
+OBJECTIVE_C_MARKERS = re.compile(
+    r"^\s*(?:#(?:import|include)\b|@interface\b|@implementation\b)", re.M
+)
+RUST_UNSAFE_MARKERS = re.compile(
+    r"\bunsafe\s*(?:\{|fn\b|impl\b|extern\b)|\bextern\s+\"C\""
+)
+MOBILE_MANIFEST_NAMES = frozenset({"androidmanifest.xml", "info.plist"})
+BUILD_OUTPUT_DIRECTORY_NAMES = frozenset({"build", "dist", "target"})
 
 IGNORED_DIRECTORY_NAMES = frozenset(
     {
@@ -175,18 +184,23 @@ SURFACE_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(
             r"\b(?:child_process|subprocess|os\.system|Runtime\.getRuntime|ProcessBuilder)\b"
         ),
-        re.compile(r"\b(?:eval|exec|Function)\s*\(", re.I),
+        re.compile(r"\b(?:eval|exec)\s*\(|\b(?:new\s+)?Function\s*\("),
         re.compile(r"\bexec\.Command(?:Context)?\s*\("),
     ),
     "filesystem_or_upload": (
         re.compile(
-            r"\b(?:readFile|writeFile|createReadStream|createWriteStream|sendFile)\s*\("
+            r"\b(?:readFile(?:Sync)?|writeFile(?:Sync)?|createReadStream|createWriteStream|sendFile)\s*\("
         ),
-        re.compile(r"\b(?:open|Path|os\.Open|os\.Create|std::fs)\b"),
+        re.compile(r"(?<![\w.])open\s*\(|\bfopen\s*\("),
+        re.compile(r"\b(?:os|io|codecs|aiofiles|fs|fsPromises|File)\.open\s*\("),
+        re.compile(r"\bPath\s*\("),
+        re.compile(
+            r"\b(?:os\.Open|os\.OpenFile|os\.Create|os\.ReadFile|os\.WriteFile|std::fs)\b"
+        ),
         re.compile(r"\b(?:multipart|multer|upload|archive|zipfile|tarfile)\b", re.I),
     ),
     "outbound_network": (
-        re.compile(r"\b(?:fetch|axios|undici|requests\.(?:get|post|request)|httpx)\b"),
+        re.compile(r"\bfetch\s*\(|\b(?:axios|undici|requests\.(?:get|post|request)|httpx)\b"),
         re.compile(
             r"\b(?:http\.NewRequest|reqwest|urlopen|webhook|proxy_pass)\b", re.I
         ),
@@ -291,6 +305,20 @@ class RepositoryProfile:
         return asdict(self)
 
 
+def display_path(text: str) -> str:
+    """Return a path that encodes as UTF-8 and stays on one output line.
+
+    Undecodable filename bytes become ``\\xNN`` escapes and non-printable
+    characters such as newlines become backslash escapes.
+    """
+
+    text = text.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
+    return "".join(
+        character if character.isprintable() else ascii(character)[1:-1]
+        for character in text
+    )
+
+
 def normalize_excludes(values: Sequence[str]) -> tuple[str, ...]:
     """Normalize repository-relative exclusion prefixes.
 
@@ -309,8 +337,8 @@ def normalize_excludes(values: Sequence[str]) -> tuple[str, ...]:
         candidate = PurePosixPath(value.replace("\\", "/"))
         if candidate.is_absolute() or ".." in candidate.parts:
             raise ValueError(f"Exclusion must stay below the audit root: {value!r}")
-        text = candidate.as_posix().strip("./")
-        if text:
+        text = candidate.as_posix()
+        if text != ".":
             normalized.append(text)
     return tuple(sorted(set(normalized)))
 
@@ -355,7 +383,7 @@ def walk_files(
                         state.ignored_directories[entry.name] += 1
                         continue
                     if is_excluded(relative, excludes):
-                        state.ignored_directories[relative] += 1
+                        state.ignored_directories[display_path(relative)] += 1
                         continue
                     child_directories.append(path)
                     continue
@@ -524,6 +552,8 @@ def build_profile(
     state = ScanState()
     files = walk_files(resolved_root, normalized_excludes, max_files, state)
 
+    unclassified_m_files = 0
+    entry_points_omitted = 0
     language_counts: Counter[str] = Counter()
     manifests: list[str] = []
     infrastructure: list[str] = []
@@ -533,9 +563,17 @@ def build_profile(
     source_files: list[tuple[Path, str]] = []
 
     for path in files:
-        relative = path.relative_to(resolved_root).as_posix()
+        relative = display_path(path.relative_to(resolved_root).as_posix())
         suffix = path.suffix.lower()
         language = LANGUAGE_EXTENSIONS.get(suffix)
+        if suffix == ".m":
+            try:
+                prefix, _ = read_text_prefix(path, 4096)
+            except OSError:
+                prefix = ""
+            if not OBJECTIVE_C_MARKERS.search(prefix):
+                language = None
+                unclassified_m_files += 1
         if language:
             language_counts[language] += 1
             source_files.append((path, relative))
@@ -544,8 +582,13 @@ def build_profile(
         if is_infrastructure(path, relative):
             infrastructure.append(relative)
             append_evidence(surface_evidence, "infrastructure_or_deployment", relative)
-        if is_entry_point(path, relative) and len(entry_points) < 50:
-            entry_points.append(relative)
+        if path.name.lower() in MOBILE_MANIFEST_NAMES:
+            append_evidence(surface_evidence, "mobile_or_desktop", relative)
+        if is_entry_point(path, relative):
+            if len(entry_points) < MAX_ENTRY_POINTS:
+                entry_points.append(relative)
+            else:
+                entry_points_omitted += 1
 
     native_languages = {
         "C",
@@ -553,7 +596,6 @@ def build_profile(
         "C/C++ Header",
         "Objective-C",
         "Objective-C++",
-        "Rust",
     }
     if native_languages.intersection(language_counts):
         for path, relative in source_files:
@@ -569,7 +611,7 @@ def build_profile(
     content_candidates: list[tuple[Path, str, bool]] = []
     manifest_set = set(manifests)
     for path in files:
-        relative = path.relative_to(resolved_root).as_posix()
+        relative = display_path(path.relative_to(resolved_root).as_posix())
         if relative in manifest_set:
             content_candidates.append((path, relative, True))
     content_candidates.extend(
@@ -595,6 +637,9 @@ def build_profile(
             for framework, terms in FRAMEWORK_TERMS.items():
                 if any(term.lower() in lowered for term in terms):
                     append_evidence(framework_evidence, framework, relative)
+
+        if path.suffix.lower() == ".rs" and RUST_UNSAFE_MARKERS.search(text):
+            append_evidence(surface_evidence, "native_or_unsafe_code", relative)
 
         for surface, patterns in SURFACE_PATTERNS.items():
             if any(pattern.search(text) for pattern in patterns):
@@ -663,6 +708,25 @@ def build_profile(
         warnings.append(
             f"{state.symlinks_skipped} symbolic links were skipped and not followed."
         )
+    if entry_points_omitted:
+        warnings.append(
+            f"{entry_points_omitted} more entry-point candidates were omitted after "
+            f"the first {MAX_ENTRY_POINTS}."
+        )
+    skipped_outputs = sorted(
+        BUILD_OUTPUT_DIRECTORY_NAMES.intersection(state.ignored_directories)
+    )
+    if skipped_outputs:
+        warnings.append(
+            "Skipped build-output directories named "
+            + ", ".join(skipped_outputs)
+            + "; review them manually if they hold source or deployment files."
+        )
+    if unclassified_m_files:
+        warnings.append(
+            f"{unclassified_m_files} .m files lack Objective-C markers and were not "
+            "classified (possibly MATLAB)."
+        )
 
     scan = {
         "files_scanned": state.files_scanned,
@@ -672,7 +736,7 @@ def build_profile(
         "truncated": state.truncated,
         "symlinks_skipped": state.symlinks_skipped,
         "unreadable_files": state.unreadable_files,
-        "explicit_excludes": list(normalized_excludes),
+        "explicit_excludes": [display_path(value) for value in normalized_excludes],
         "ignored_directories": dict(sorted(state.ignored_directories.items())),
     }
     languages = [
@@ -695,7 +759,7 @@ def build_profile(
 
     return RepositoryProfile(
         schema_version=SCHEMA_VERSION,
-        root=str(resolved_root),
+        root=display_path(str(resolved_root)),
         scan=scan,
         languages=languages,
         manifests=sorted(set(manifests)),

@@ -213,8 +213,12 @@ Do not report:
 
 ## Tool-assisted checks
 
-Use only tools already present unless the user authorizes installation/network
-access:
+Commands that build or run project code, or need the network, run only with
+explicit user authorization; never on an untrusted repository. That covers
+repository tests, `pip-audit` (queries advisory services), Semgrep registry rules,
+mypy with repository-configured plugins, and native builds. Read-only tools that
+neither execute project code nor fetch data, such as Bandit, may run when already
+installed. Without authorization, list the rest as recommended checks.
 
 - repository tests and focused safe regression tests;
 - Bandit or Semgrep for seed hypotheses;

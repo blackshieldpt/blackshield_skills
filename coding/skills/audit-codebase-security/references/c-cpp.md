@@ -293,8 +293,9 @@ Do not report:
 
 ## Tool-assisted checks
 
-Use only existing tools and safe repository commands unless the user authorizes
-installation or additional execution:
+Compiling, sanitizer builds, fuzzing, and running tests or build scripts execute
+project code; they run only with explicit user authorization, never on an untrusted
+repository. Without authorization, list them as recommended checks:
 
 - compile with configured warnings and treat new warnings as investigation seeds;
 - AddressSanitizer and UndefinedBehaviorSanitizer for memory/UB paths;

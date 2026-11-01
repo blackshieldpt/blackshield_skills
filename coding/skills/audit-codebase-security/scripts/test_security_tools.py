@@ -5,8 +5,12 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
+import re
+import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +34,7 @@ def valid_report() -> dict[str, Any]:
             "finding_count": 1,
             "reviewed": ["HTTP routes"],
             "taxonomy_families": ["AUTHZ"],
+            "loaded_skills": [],
             "limitations": [],
         },
         "findings": [
@@ -53,6 +58,7 @@ def valid_report() -> dict[str, Any]:
                 "impact": "Cross-tenant data disclosure.",
                 "remediation": "Scope the lookup to the authenticated tenant.",
                 "validation": "Assert a cross-tenant request returns no object.",
+                "vetting": "refuter",
             }
         ],
     }
@@ -198,6 +204,159 @@ class ProfileRepositoryTests(unittest.TestCase):
                 profile_repository.build_profile(root / "missing")
             with self.assertRaises(NotADirectoryError):
                 profile_repository.build_profile(root / "file-0.py")
+
+    def test_exclude_keeps_leading_dot(self) -> None:
+        """Keep dot-prefixed exclusions such as `.github` intact."""
+
+        self.assertEqual(
+            (".github", "src"),
+            profile_repository.normalize_excludes((".github", "./src/", ".")),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".github" / "workflows" / "ci.yml").write_text("jobs: {}\n")
+            profile = profile_repository.build_profile(root, excludes=(".github",))
+            self.assertEqual([], profile.infrastructure)
+
+    def test_exclusion_removes_matching_files(self) -> None:
+        """Drop excluded files from the profile while keeping their siblings."""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for directory in ("included", "excluded"):
+                (root / directory).mkdir()
+                (root / directory / "main.py").write_text("print('x')\n")
+
+            data = profile_repository.build_profile(
+                root, excludes=("excluded",)
+            ).to_dict()
+            self.assertEqual(["included/main.py"], data["entry_point_candidates"])
+            self.assertEqual(1, data["scan"]["files_scanned"])
+            self.assertIn("excluded", data["scan"]["ignored_directories"])
+
+    def test_non_utf8_filename_renders(self) -> None:
+        """Render undecodable filename bytes as escapes instead of crashing."""
+
+        if sys.platform in ("darwin", "win32"):
+            self.skipTest("filesystem rejects non-UTF-8 filenames")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            try:
+                with open(os.path.join(os.fsencode(root), b"main.\xff.py"), "wb") as handle:
+                    handle.write(b"import subprocess\n")
+            except OSError:
+                self.skipTest("filesystem rejects non-UTF-8 filenames")
+
+            profile = profile_repository.build_profile(root)
+            json.dumps(profile.to_dict(), ensure_ascii=False).encode("utf-8")
+            profile_repository.render_markdown(profile).encode("utf-8")
+            self.assertEqual(["main.\\xff.py"], profile.entry_point_candidates)
+
+    def test_newline_filename_cannot_forge_markdown(self) -> None:
+        """Escape control characters so filenames stay on one Markdown line."""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "routes").mkdir()
+            try:
+                (root / "routes" / "a\n## Injected\n- evil.py").write_text("x")
+            except OSError:
+                self.skipTest("filesystem rejects newlines in filenames")
+
+            markdown = profile_repository.render_markdown(
+                profile_repository.build_profile(root)
+            )
+            self.assertNotIn("\n## Injected", markdown)
+            self.assertIn("routes/a\\n## Injected\\n- evil.py", markdown)
+
+    def test_surface_patterns_skip_ordinary_code(self) -> None:
+        """Do not flag ordinary functions or window.open as dangerous surfaces."""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "ui.js").write_text(
+                "const show = function (url) { window.open(url); };\n"
+            )
+            surfaces = {
+                item["name"]
+                for item in profile_repository.build_profile(root).security_surfaces
+            }
+            self.assertNotIn("dynamic_execution_or_process", surfaces)
+            self.assertNotIn("filesystem_or_upload", surfaces)
+
+            (root / "ui.js").write_text("const f = new Function(body);\n")
+            (root / "store.py").write_text("data = open(path).read()\n")
+            surfaces = {
+                item["name"]
+                for item in profile_repository.build_profile(root).security_surfaces
+            }
+            self.assertIn("dynamic_execution_or_process", surfaces)
+            self.assertIn("filesystem_or_upload", surfaces)
+
+    def test_surface_patterns_cover_qualified_sinks(self) -> None:
+        """Detect qualified file APIs and Function() without matching bare words."""
+
+        def surfaces(text: str) -> set[str]:
+            return {
+                name
+                for name, patterns in profile_repository.SURFACE_PATTERNS.items()
+                if any(pattern.search(text) for pattern in patterns)
+            }
+
+        for text in (
+            "os.open(p, os.O_RDONLY)",
+            "io.open(p)",
+            "codecs.open(p)",
+            "aiofiles.open(p)",
+            "fs.open(p)",
+            "File.open(p)",
+            "Path(user).read_text()",
+            "pathlib.Path(p).open()",
+            "fs.readFileSync(p)",
+        ):
+            with self.subTest(text=text):
+                self.assertIn("filesystem_or_upload", surfaces(text))
+        for text in ("window.open(url)", "xhr.open('GET', u)", "return Path"):
+            with self.subTest(text=text):
+                self.assertNotIn("filesystem_or_upload", surfaces(text))
+        self.assertIn(
+            "dynamic_execution_or_process", surfaces("Function('return this')()")
+        )
+        self.assertNotIn(
+            "dynamic_execution_or_process", surfaces("const f = function (x) {};")
+        )
+
+    def test_language_heuristics(self) -> None:
+        """Classify Rust, .m, Android, and capped/skipped paths precisely."""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "safe.rs").write_text("fn main() {}\n")
+            (root / "model.m").write_text("% MATLAB script\nx = 1;\n")
+            (root / "AndroidManifest.xml").write_text("<manifest/>\n")
+            (root / "build").mkdir()
+            (root / "build" / "Dockerfile").write_text("FROM scratch\n")
+            (root / "routes").mkdir()
+            for index in range(profile_repository.MAX_ENTRY_POINTS + 2):
+                (root / "routes" / f"r{index}.txt").write_text("")
+
+            profile = profile_repository.build_profile(root)
+            surfaces = {item["name"] for item in profile.security_surfaces}
+            self.assertNotIn("native_or_unsafe_code", surfaces)
+            self.assertIn("mobile_or_desktop", surfaces)
+            self.assertNotIn("references/c-cpp.md", profile.recommended_reference_packs)
+            warnings = " ".join(profile.warnings)
+            self.assertIn("2 more entry-point candidates", warnings)
+            self.assertIn("build-output directories named build", warnings)
+            self.assertIn("1 .m files", warnings)
+
+            (root / "ffi.rs").write_text("unsafe { ptr.read() }\n")
+            (root / "view.m").write_text("#import <Foundation/Foundation.h>\n")
+            profile = profile_repository.build_profile(root)
+            surfaces = {item["name"] for item in profile.security_surfaces}
+            self.assertIn("native_or_unsafe_code", surfaces)
+            self.assertIn("references/c-cpp.md", profile.recommended_reference_packs)
 
     def test_helpers_and_cli(self) -> None:
         """Cover helper classification and both CLI output modes."""
@@ -353,6 +512,137 @@ class ValidateFindingsTests(unittest.TestCase):
         errors = validate_findings.validate_report(report)
         self.assertTrue(any("non-negative integer" in error for error in errors))
         self.assertTrue(any("locations must be" in error for error in errors))
+
+    def test_rejects_contract_gaps(self) -> None:
+        """Reject bool versions, unknown IDs, escaping paths, and missing keys."""
+
+        report = valid_report()
+        report["schema_version"] = True
+        report["scope"].pop("target")
+        report["summary"].pop("loaded_skills")
+        report["summary"]["taxonomy_families"] = ["NOPE"]
+        finding = report["findings"][0]
+        finding["taxonomy_id"] = "AUTHN-99"
+        finding.pop("vetting")
+        finding["locations"] = [
+            {"path": "../outside.py", "line": 1, "symbol": None},
+            {"path": "/etc/passwd", "line": 1, "symbol": None},
+            {"path": "C:/x.py", "line": 1, "symbol": None},
+            {"path": "src/a.py", "line": 1},
+        ]
+        errors = validate_findings.validate_report(report)
+        for expected in (
+            "schema_version must equal 1",
+            "scope.target is missing",
+            "summary.loaded_skills must be an array",
+            "summary.taxonomy_families[0] is not a known family",
+            "taxonomy_id is not a recognized",
+            "findings[0].vetting must be one of",
+            "locations[0].path must be a repository-relative",
+            "locations[1].path must be a repository-relative",
+            "locations[2].path must be a repository-relative",
+            "locations[3].symbol is missing",
+        ):
+            with self.subTest(expected=expected):
+                self.assertTrue(
+                    any(expected in error for error in errors), (expected, errors)
+                )
+
+        report = valid_report()
+        report["summary"]["loaded_skills"] = ["blueprint", ""]
+        self.assertEqual(
+            ["summary.loaded_skills[1] must be a non-empty string"],
+            validate_findings.validate_report(report),
+        )
+
+    def test_taxonomy_ids_match_reference(self) -> None:
+        """Keep the validator's ID table in sync with the taxonomy reference."""
+
+        taxonomy = (
+            Path(__file__).resolve().parents[1]
+            / "references"
+            / "vulnerability-taxonomy.md"
+        ).read_text(encoding="utf-8")
+        ids = re.findall(r"^\| ([A-Z]+-[0-9]{2}) \|", taxonomy, re.M)
+        ids = [value for value in ids if not value.startswith("CWE-")]
+        self.assertEqual(len(ids), len(set(ids)), "duplicate taxonomy IDs")
+        self.assertEqual(set(ids), validate_findings.TAXONOMY_IDS)
+
+    def test_validator_reads_stdin(self) -> None:
+        """Accept '-' so reports never need to be written into the audited repo."""
+
+        stdin = io.TextIOWrapper(io.BytesIO(json.dumps(valid_report()).encode()))
+        stdout = io.StringIO()
+        with mock.patch.object(sys, "stdin", stdin), contextlib.redirect_stdout(
+            stdout
+        ):
+            exit_code = validate_findings.main(["-"])
+        self.assertEqual(0, exit_code)
+        self.assertEqual("valid\n", stdout.getvalue())
+
+    def test_deeply_nested_json_is_unreadable(self) -> None:
+        """Report pathological nesting as unreadable input (2), not invalid (1)."""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "deep.json"
+            path.write_text("[" * 200_000, encoding="utf-8")
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                exit_code = validate_findings.main([str(path)])
+            self.assertEqual(2, exit_code)
+            self.assertIn("cannot read report", stderr.getvalue())
+
+    def test_non_string_enum_values_are_errors(self) -> None:
+        """Report list/dict enum values as errors instead of raising TypeError."""
+
+        report = valid_report()
+        report["scope"]["mode"] = {}
+        for key in ("taxonomy_id", "severity", "confidence", "vetting"):
+            report["findings"][0][key] = []
+        errors = validate_findings.validate_report(report)
+        for expected in (
+            "scope.mode",
+            "taxonomy_id",
+            "severity",
+            "confidence",
+            "vetting",
+        ):
+            with self.subTest(expected=expected):
+                self.assertTrue(any(expected in error for error in errors), errors)
+
+    def test_location_path_edge_cases(self) -> None:
+        """Accept colon names; reject '.', home-relative, and URL paths."""
+
+        for path, valid in (
+            ("a:b.ts", True),
+            ("src/a:b.ts", True),
+            ("C:", False),
+            ("C:\\x.py", False),
+            (".", False),
+            ("./", False),
+            ("~", False),
+            ("~/x.py", False),
+            ("file:///etc/passwd", False),
+            ("https://example.com/a.py", False),
+        ):
+            with self.subTest(path=path):
+                report = valid_report()
+                report["findings"][0]["locations"][0]["path"] = path
+                errors = validate_findings.validate_report(report)
+                self.assertEqual(valid, not errors, errors)
+
+    def test_oversized_integer_is_unreadable(self) -> None:
+        """Report integers beyond Python's digit limit as unparsable (exit 2)."""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "big.json"
+            path.write_text('{"schema_version": ' + "1" * 5000 + "}", encoding="utf-8")
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                exit_code = validate_findings.main([str(path)])
+            if exit_code == 1 and "cannot read report" not in stderr.getvalue():
+                self.skipTest("this Python has no integer digit limit")
+            self.assertEqual(2, exit_code)
 
     def test_validator_cli(self) -> None:
         """Return distinct CLI statuses for valid, invalid, and unreadable input."""

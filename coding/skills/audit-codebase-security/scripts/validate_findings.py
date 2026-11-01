@@ -7,16 +7,41 @@ import argparse
 import json
 import re
 import sys
-from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any, Sequence
 
 FINDING_ID_RE = re.compile(r"^SEC-[0-9]{3,}$")
-TAXONOMY_ID_RE = re.compile(
-    r"^(?:AUTHN|AUTHZ|CLIENT|CONC|CRYPTO|DATA|DOS|FILE|INJ|LOGIC|MEM|OPS|PARSE|SESS|VAL|WEB)-[0-9]{2}$"
+# Highest ID per family in references/vulnerability-taxonomy.md; a test keeps
+# this table in sync with the taxonomy.
+TAXONOMY_FAMILY_SIZES = {
+    "AUTHN": 13,
+    "AUTHZ": 12,
+    "CLIENT": 9,
+    "CONC": 7,
+    "CRYPTO": 15,
+    "DATA": 12,
+    "DOS": 14,
+    "FILE": 12,
+    "INJ": 17,
+    "LOGIC": 13,
+    "MEM": 16,
+    "OPS": 15,
+    "PARSE": 12,
+    "SESS": 8,
+    "VAL": 11,
+    "WEB": 12,
+}
+TAXONOMY_IDS = frozenset(
+    f"{family}-{number:02d}"
+    for family, size in TAXONOMY_FAMILY_SIZES.items()
+    for number in range(1, size + 1)
 )
 SEVERITIES = frozenset({"critical", "high", "medium", "low"})
 CONFIDENCES = frozenset({"high", "medium"})
 MODES = frozenset({"full", "targeted", "diff"})
+VETTING = frozenset({"refuter", "unvetted"})
+WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:(?:[\\/]|$)")
+URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
 
 def is_non_empty_string(value: object) -> bool:
@@ -42,6 +67,47 @@ def require_string(
         )
 
 
+def is_member(value: object, allowed: frozenset[str]) -> bool:
+    """Return whether a value is a string in an allowed set, without hashing it."""
+
+    return isinstance(value, str) and value in allowed
+
+
+def require_present(
+    value: dict[str, object],
+    keys: Sequence[str],
+    path: str,
+    errors: list[str],
+) -> None:
+    """Report required keys that are absent, including nullable ones."""
+
+    for key in keys:
+        if key not in value:
+            errors.append(f"{path}.{key} is missing")
+
+
+def require_relative_path(value: object, path: str, errors: list[str]) -> None:
+    """Validate a non-empty repository-relative path."""
+
+    if not is_non_empty_string(value):
+        errors.append(f"{path} must be a non-empty string")
+        return
+    assert isinstance(value, str)
+    candidate = PurePosixPath(value.replace("\\", "/"))
+    if (
+        candidate.is_absolute()
+        or WINDOWS_DRIVE_RE.match(value)
+        or URL_SCHEME_RE.match(value)
+        or ".." in candidate.parts
+        or candidate.as_posix() == "."
+        or candidate.parts[0].startswith("~")
+    ):
+        errors.append(
+            f"{path} must be a repository-relative file path without '..', '~', "
+            "or a URL scheme"
+        )
+
+
 def require_string_list(value: object, path: str, errors: list[str]) -> None:
     """Validate an array of strings."""
 
@@ -63,7 +129,8 @@ def validate_location(
     if not isinstance(value, dict):
         errors.append(f"{path} must be an object")
         return
-    require_string(value.get("path"), f"{path}.path", errors)
+    require_present(value, ("path", "line", "symbol"), path, errors)
+    require_relative_path(value.get("path"), f"{path}.path", errors)
     line = value.get("line")
     if not isinstance(line, int) or isinstance(line, bool) or line < 1:
         errors.append(f"{path}.line must be a positive integer")
@@ -93,14 +160,14 @@ def validate_finding(
 
     require_string(value.get("title"), f"{path}.title", errors)
     taxonomy_id = value.get("taxonomy_id")
-    if not isinstance(taxonomy_id, str) or not TAXONOMY_ID_RE.fullmatch(taxonomy_id):
+    if not is_member(taxonomy_id, TAXONOMY_IDS):
         errors.append(f"{path}.taxonomy_id is not a recognized stable taxonomy ID")
 
     severity = value.get("severity")
-    if severity not in SEVERITIES:
+    if not is_member(severity, SEVERITIES):
         errors.append(f"{path}.severity must be one of {sorted(SEVERITIES)}")
     confidence = value.get("confidence")
-    if confidence not in CONFIDENCES:
+    if not is_member(confidence, CONFIDENCES):
         errors.append(f"{path}.confidence must be one of {sorted(CONFIDENCES)}")
 
     locations = value.get("locations")
@@ -124,6 +191,11 @@ def validate_finding(
     if isinstance(evidence, list) and not evidence:
         errors.append(f"{path}.evidence must contain at least one item")
 
+    vetting = value.get("vetting")
+    if severity in ("critical", "high") or "vetting" in value:
+        if not is_member(vetting, VETTING):
+            errors.append(f"{path}.vetting must be one of {sorted(VETTING)}")
+
 
 def validate_report(value: object) -> list[str]:
     """Return all validation errors for an audit report."""
@@ -132,15 +204,17 @@ def validate_report(value: object) -> list[str]:
     if not isinstance(value, dict):
         return ["report must be a JSON object"]
 
-    if value.get("schema_version") != 1:
+    schema_version = value.get("schema_version")
+    if type(schema_version) is not int or schema_version != 1:
         errors.append("schema_version must equal 1")
 
     scope = value.get("scope")
     if not isinstance(scope, dict):
         errors.append("scope must be an object")
     else:
-        if scope.get("mode") not in MODES:
+        if not is_member(scope.get("mode"), MODES):
             errors.append(f"scope.mode must be one of {sorted(MODES)}")
+        require_present(scope, ("target", "commit_range"), "scope", errors)
         require_string(scope.get("root"), "scope.root", errors)
         require_string(scope.get("target"), "scope.target", errors, nullable=True)
         require_string(
@@ -163,10 +237,16 @@ def validate_report(value: object) -> list[str]:
         ):
             errors.append("summary.finding_count must be a non-negative integer")
         require_string_list(summary.get("reviewed"), "summary.reviewed", errors)
+        families = summary.get("taxonomy_families")
+        require_string_list(families, "summary.taxonomy_families", errors)
+        if isinstance(families, list):
+            for index, family in enumerate(families):
+                if isinstance(family, str) and family not in TAXONOMY_FAMILY_SIZES:
+                    errors.append(
+                        f"summary.taxonomy_families[{index}] is not a known family"
+                    )
         require_string_list(
-            summary.get("taxonomy_families"),
-            "summary.taxonomy_families",
-            errors,
+            summary.get("loaded_skills"), "summary.loaded_skills", errors
         )
         require_string_list(summary.get("limitations"), "summary.limitations", errors)
 
@@ -193,7 +273,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Validate an audit-codebase-security JSON report."
     )
-    parser.add_argument("report", type=Path)
+    parser.add_argument("report", help="report path, or '-' for standard input")
     return parser.parse_args(argv)
 
 
@@ -202,9 +282,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parse_args(argv)
     try:
-        with args.report.open(encoding="utf-8") as handle:
-            report: Any = json.load(handle)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        if args.report == "-":
+            report: Any = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+        else:
+            with open(args.report, encoding="utf-8") as handle:
+                report = json.load(handle)
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ) as error:
         print(f"error: cannot read report: {error}", file=sys.stderr)
         return 2
 

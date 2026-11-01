@@ -18,6 +18,9 @@
 - Recommend the control location and security property, not just a library swap.
 - Give a safe validation step.
 - Redact credentials, tokens, private keys, and sensitive personal data.
+- Fingerprint a secret without any of its characters: `<secret type> at
+  <path>:<line>, <length> chars`. When two occurrences must be told apart, add
+  `sha256:<first 8 hex digits>` of the value, computed without printing the value.
 - Merge duplicate manifestations that share one root cause and remediation.
 
 ## Markdown contract
@@ -30,6 +33,7 @@ notes.
 
 - Severity: High
 - Confidence: High
+- Vetting: refuter
 - Taxonomy: AUTHZ-02 — IDOR / user-controlled object key
 - Location: `src/routes/documents.ts:84` (`downloadDocument`)
 
@@ -57,10 +61,23 @@ Validation: Add an integration test in which tenant A requests tenant B's docume
 ID and assert that no document bytes or metadata are returned.
 ```
 
-After findings, include:
+`Vetting` is required for High and Critical findings: `refuter` when a
+fresh-context refuter failed to disprove the finding, `unvetted` when the host could
+not run one.
 
-Also record the loaded skills so a reader can tell which framework knowledge
-informed the audit:
+After findings, list Low-confidence candidates that did not pass the evidence gate.
+They get no `SEC-NNN` ID or severity:
+
+```markdown
+## Investigation items
+
+- `src/upload.py:41` — suspected FILE-01: the filename reaches `open()` under the
+  upload root; unknown whether the proxy strips `../`. Settle by reading the proxy
+  configuration for the upload route.
+```
+
+Then include the coverage section. It records the loaded skills so a reader can
+tell which framework knowledge informed the audit:
 
 ```markdown
 ## Coverage
@@ -78,11 +95,15 @@ were found in the reviewed scope` and still include coverage.
 
 ## JSON contract
 
-Use JSON only when requested. Validate it with:
+Use JSON only when requested. Write it to a temporary directory outside the
+audited repository, or pipe it on standard input, and validate it with:
 
 ```text
-python3 <skill-directory>/scripts/validate_findings.py report.json
+python3 <base-directory>/scripts/validate_findings.py "$TMPDIR/report.json"
+python3 <base-directory>/scripts/validate_findings.py - < "$TMPDIR/report.json"
 ```
+
+Exit status: 0 valid, 1 invalid report, 2 unreadable or unparsable input.
 
 Top-level object:
 
@@ -109,9 +130,9 @@ Top-level object:
 |---|---|---|
 | `finding_count` | integer | Must equal `findings.length` |
 | `reviewed` | array of strings | Components/entry points reviewed |
-| `taxonomy_families` | array of strings | Stable family prefixes |
+| `taxonomy_families` | array of strings | Known family prefixes such as `AUTHZ` |
 | `loaded_skills` | array of strings | Stack skills loaded; may be empty |
-| `limitations` | array of strings | Missing evidence and exclusions |
+| `limitations` | array of strings | Missing evidence, exclusions, and investigation items |
 
 Each finding:
 
@@ -119,7 +140,7 @@ Each finding:
 |---|---|---|
 | `id` | string | Unique `SEC-NNN` identifier |
 | `title` | string | Non-empty root-cause title |
-| `taxonomy_id` | string | Stable ID such as `AUTHZ-02` |
+| `taxonomy_id` | string | An ID defined in `vulnerability-taxonomy.md`, such as `AUTHZ-02` |
 | `severity` | string | `critical`, `high`, `medium`, or `low` |
 | `confidence` | string | `high` or `medium` |
 | `locations` | array | At least one location |
@@ -130,17 +151,19 @@ Each finding:
 | `impact` | string | Non-empty |
 | `remediation` | string | Non-empty |
 | `validation` | string | Non-empty safe validation step |
+| `vetting` | string | `refuter` or `unvetted`; required when severity is `critical` or `high` |
 
 Each location:
 
 | Field | Type | Requirements |
 |---|---|---|
-| `path` | string | Non-empty repository-relative path |
+| `path` | string | Non-empty repository-relative path; no absolute path or `..` segment |
 | `line` | integer | One-based positive line |
 | `symbol` | string or null | Function/class/resource name |
 
-Unknown fields are allowed for forward compatibility, but required fields and enum
-values must remain valid.
+Every field in these tables must be present (except `vetting` on Medium and Low
+findings); nullable fields hold `null` rather than being omitted. Unknown fields are allowed for forward compatibility, but
+required fields and enum values must remain valid.
 
 ## JSON example
 
@@ -184,7 +207,8 @@ values must remain valid.
       "preconditions": "Any authenticated account and a target document ID.",
       "impact": "Cross-tenant disclosure of stored documents.",
       "remediation": "Scope document lookup and equivalent handlers to the authenticated tenant.",
-      "validation": "Assert that tenant A receives no bytes or metadata for tenant B's document ID."
+      "validation": "Assert that tenant A receives no bytes or metadata for tenant B's document ID.",
+      "vetting": "refuter"
     }
   ]
 }

@@ -147,6 +147,11 @@ bindings rather than handlers.
   and cause huge allocations even though integer arithmetic wraps predictably.
 - A bounds panic or nil dereference is normally an availability finding only when an
   attacker can reach it and recovery/process topology makes the impact meaningful.
+- `recover()` does not contain fatal runtime errors: detected concurrent map
+  writes, a goroutine exceeding the maximum stack size (deep recursion), exceeding
+  `debug.SetMaxThreads`, and out-of-memory crash the whole process. It also only
+  catches panics in its own goroutine, so a panic in a goroutine a handler starts
+  bypasses the router's recovery middleware.
 - `os.CreateTemp` provides safe creation semantics, but directory choice,
   permissions, content sensitivity, cleanup, and later rename/use still matter.
 - Build tags and platform-specific files can replace the implementation reviewed.
@@ -200,7 +205,9 @@ Accept a defense only after confirming:
   receives attacker-controlled markup/code/URLs;
 - file operations remain within an authorized root and handle absolute paths,
   separators, links, races, archive types, permissions, and operation-specific
-  authorization;
+  authorization; `os.Root` (Go 1.24+) confines operations to a directory including
+  symlink targets, while `filepath.IsLocal` (Go 1.20+) is only a lexical check that
+  does not stop symlinks or later re-resolution;
 - outbound network enforcement covers redirects, DNS, resolved addresses, schemes,
   credentials, proxy environment, custom transports/dialers, and the connected
   endpoint;
@@ -228,7 +235,11 @@ Do not report:
 
 ## Tool-assisted checks
 
-Use only locally available tools unless installation/network access is authorized:
+Commands that build or run project code, or need the network, run only with
+explicit user authorization; never on an untrusted repository. That covers every
+item below except reading existing reports: `go test`, `go vet`, and `govulncheck`
+build packages and may download modules, and `govulncheck` also fetches the
+vulnerability database. Without authorization, list them as recommended checks.
 
 - `go test ./...` and focused safe tests;
 - `go test -race ./...` for concurrency-sensitive code when the environment permits;
@@ -237,5 +248,5 @@ Use only locally available tools unless installation/network access is authorize
 - Go fuzz tests for bounded parsers and invariants;
 - native sanitizers/static analysis for cgo dependencies.
 
-Inspect commands and build scripts before execution. Tool output is a hypothesis
+Inspect commands and build scripts before any authorized execution. Tool output is a hypothesis
 until repository-specific reachability and impact are established.

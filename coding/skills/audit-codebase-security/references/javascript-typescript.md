@@ -8,6 +8,7 @@
 - [Framework review](#framework-review)
 - [Runtime and language traps](#runtime-and-language-traps)
 - [Defense validation](#defense-validation)
+- [Tool-assisted checks](#tool-assisted-checks)
 
 ## Applicability
 
@@ -60,7 +61,7 @@ reachability before reporting.
 | Authorization | Object lookup by request ID, missing tenant predicates, GraphQL resolver policy, server actions, batch/export/import paths, client-provided roles/owners/status |
 | Crypto/secrets | `Math.random` for security values, deprecated cipher APIs, static keys/nonces, signature decode without verify, insecure TLS agent options, secrets in source/logs/client bundles |
 | DoS | Regex on unbounded input, JSON/body/upload limits, deep recursion/merge, unbounded `Promise.all`, queues/caches/maps without caps, request fan-out, synchronous CPU/filesystem work |
-| Browser boundaries | `postMessage`, `window.open`, `target=_blank`, service workers, DOM URL sinks, local/session storage, CORS assumptions, CSRF, clickjacking |
+| Browser boundaries | `postMessage`, `window.open` without `noopener`, `target=_blank` only with an explicit `rel="opener"` (current browsers imply `noopener` for it), service workers, DOM URL sinks, local/session storage, CORS assumptions, CSRF, clickjacking |
 | Electron/desktop | `nodeIntegration`, `contextIsolation`, preload bridges, IPC caller/channel validation, navigation/new-window handlers, custom protocols, filesystem/process methods exposed to renderer |
 
 Useful seed searches may include API names above plus repository-specific wrappers.
@@ -87,6 +88,10 @@ behind a helper with a harmless name.
   actions, build-time generation, and browser code.
 - Treat server actions and route handlers as externally callable boundaries; UI
   visibility is not authorization.
+- Do not accept middleware as the only authorization layer. Next.js before 12.3.5,
+  13.5.9, 14.2.25, and 15.2.3 let a client skip middleware with the
+  `x-middleware-subrequest` header (CVE-2025-29927); check the resolved version and
+  whether handlers or data access re-check authorization.
 - Review cache keys and revalidation for user/tenant data.
 - Check serialization from server to client for secrets and excessive fields.
 - Review redirects, image/URL fetchers, HTML injection, CSRF assumptions, and
@@ -156,3 +161,20 @@ Do not report:
 - a path join alone without a containment escape and sensitive operation;
 - a development dependency CVE without establishing the installed/resolved version
   and relevant production or build threat model.
+
+## Tool-assisted checks
+
+Commands that build or run project code, or need the network, run only with
+explicit user authorization; never on an untrusted repository. That covers
+repository tests, builds, package scripts, ESLint, `npm audit`/`yarn audit`/`pnpm audit`
+(query the registry), and Semgrep registry rules. Without authorization, list them
+as recommended checks:
+
+- repository tests and focused safe regression tests;
+- `npm audit` or the workspace's package-manager audit against the lockfile;
+- configured ESLint security rules (ESLint executes the repository's config files)
+  or Semgrep for seed hypotheses;
+- TypeScript compiler checks for unchecked `any`/unknown boundaries.
+
+Treat every tool result as a hypothesis until repository-specific reachability and
+impact are established.

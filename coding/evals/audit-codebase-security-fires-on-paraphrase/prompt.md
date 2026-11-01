@@ -1,0 +1,1 @@
+We're about to put this service on the public internet. Could an outsider read other customers' records or get a shell on the box through it? Go through the code and tell me what is actually exploitable, with file and line.
