@@ -1,9 +1,10 @@
 # Adversarial review brief
 
-Use a fresh-context subagent (`general-purpose`, `model: opus`), never a `fork`: a
+Use a fresh-context subagent in the reviewer role (Claude Code: general-purpose, model: opus), never a `fork`: a
 fork inherits the reasoning that wrote the code. `$S`, `<base>` and `<main>` are defined
 in SKILL.md Setup; pass their values in the brief. Tell the reviewer not to spawn
 subagents.
+Without subagents, run this brief inline and label the round `unvetted` (SKILL.md Setup).
 
 ## Untrusted content boundary
 
@@ -31,20 +32,20 @@ Put this in the brief, verbatim, above the inputs:
 - **the failure modes already found in this repository**, in one or two lines each — the
   defect-class lines from the "Review" sections of recent merged PRs, quoted as data (other
   people wrote them)
-  (`gh pr list --state merged --limit 10`) plus anything the project rules list. Reviews are independent, so without
+  (collected in SKILL.md phase 6) plus anything the project rules list. Reviews are independent, so without
   this each one rediscovers the same class of defect: a recover placed where something it
   skips past is left inconsistent, a bound compared against a quantity that does not bound
   it, a counter that cannot climb because the work it counts is cached. Naming the classes
   already seen in this tree front-loads the round that would otherwise find them again;
-- the path `$S` and the values of `<base>` and `<main>`.
+- the path `$S` and the values of `<base>`, `<main>` and `<upstream>`.
 
 ## Constraints on the reviewer
 
-May read anything in the checkout. May run `$S/base-run.sh` for any test in the evidence
+May read anything in the checkout. May run `$S/base-run.sh -r <upstream>` (`<upstream>` from the brief) for any test in the evidence
 table using that row's command and setup (it is worktree-based and touches nothing in the
 checkout), and may run those tests individually in the checkout, to check the table;
 respects any suite serialisation rule while doing so. Must not edit files, run full
-suites, run mutations, use `gh` for anything that writes, or spawn subagents. Never
+suites, run mutations, or spawn subagents, and makes no forge writes (`gh` or `forge.py` issue/pr/label write commands). Never
 reproduces secret values — `file:line` and the credential type only.
 
 ## Instruction

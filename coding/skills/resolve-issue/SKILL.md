@@ -109,14 +109,7 @@ change touches (imports in the affected files, the dependency manifest) and load
 available skill that matches. Record the list in the plan comment and pass it to every
 subagent.
 
-**Subagents.** The adversarial reviewer and the second-attempt implementer are
-`general-purpose`, never a `fork`, with `model: opus` set explicitly (an omitted model
-inherits the session's, which may be a cheaper one). Read-only fan-out (call-site
-sweeps, searching docs for an old name, listing tests that touch an area) runs on
-`Explore` with `model: haiku`, or `sonnet` when the sweep must judge what code does
-rather than find where it is. Every brief carries the
-untrusted-content boundary, the redaction rule, "do not spawn subagents", and "no `gh`
-writes". Spawn no subagents beyond these and the review skills named in phase 6.
+**Subagents.** The adversarial reviewer and the second-attempt implementer use the reviewer role (Claude Code: general-purpose, model: opus), never a `fork` (an omitted model inherits the session's, which may be a cheaper one). Read-only fan-out (call-site sweeps, searching docs for an old name, listing tests that touch an area) uses the sweep role (Claude Code: Explore, model: haiku; sonnet when the sweep must judge what code does rather than find where it is). Every brief carries the untrusted-content boundary, the redaction rule, "do not spawn subagents", and "no forge writes (`gh` or `forge.py` issue/pr/label write commands)". If the host cannot spawn a fresh-context subagent, run the review and the second attempt inline from their briefs and label them `unvetted` in the PR's Review section; do not merge an `unvetted` change unless the user accepts that label. Spawn no subagents beyond these and the review skills named in phase 6.
 
 **Project rules.** If the repo's `CLAUDE.md` or a project skill (conventionally
 `resolve-issue-rules`) carries rules for this workflow (test commands, suite constraints,

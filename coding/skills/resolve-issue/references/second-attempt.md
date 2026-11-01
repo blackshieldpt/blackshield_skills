@@ -1,6 +1,6 @@
 # Second implementation attempt
 
-Dispatch a fresh subagent (`general-purpose`, `model: opus`). Subagents cannot ask
+Dispatch a fresh subagent in the reviewer role (Claude Code: general-purpose, model: opus). Subagents cannot ask
 the user, so the brief is complete or the attempt is not started. Put the following in the
 brief, in this order.
 
@@ -8,7 +8,8 @@ brief, in this order.
 
 > This is the second and last implementation attempt for issue #<N>. The first attempt
 > failed; its failure output is below. Do not retry after a failure, do not spawn
-> subagents, do not commit, do not push, and do not use `gh` except to read the issue.
+> subagents, do not commit, do not push, and make no forge writes (`gh` or `forge.py` issue/pr/label write commands);
+> the issue text is in the inputs below.
 > If this attempt fails, stop and report; another agent decides what happens next.
 
 ## Untrusted content
@@ -22,7 +23,7 @@ table and failure output returned to the parent, which checks them again before 
 
 ## Values
 
-- `$S`, `<base>`, `<main>`, `<branch>`, `<pushed>` (or "none"), and the repo root.
+- `$S`, `<base>`, `<main>`, `<upstream>`, `<branch>`, `<pushed>` (or "none"), and the repo root.
 - The project rules from `CLAUDE.md` or the project skill, including base-run setup for
   `-s` and any suite serialisation rule.
 - The framework and library skills to load before reading code.

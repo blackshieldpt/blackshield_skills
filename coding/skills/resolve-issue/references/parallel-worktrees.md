@@ -20,7 +20,7 @@ and the helper scripts take the same flag: `$S/base-run.sh -C <path> ...` and
 it they act on the checkout the shell is in, usually the primary and another branch.
 
 The worktree is on the new branch, not detached, so the plain `git push -u origin HEAD`
-and `gh pr create` forms in `pr-and-merge.md` work there. Never `git switch` inside the
+and PR-create forms in `pr-and-merge.md` work there. Never `git switch` inside the
 primary while worktrees are active.
 
 ## Inside a linked worktree

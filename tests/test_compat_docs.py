@@ -263,6 +263,8 @@ class CompatibilityDocsTest(unittest.TestCase):
             "coding/skills/file-issue/SKILL.md",
             "coding/skills/resolve-issue/SKILL.md",
             "coding/skills/resolve-issue/references/pr-and-merge.md",
+            "coding/skills/resolve-issue/references/review.md",
+            "coding/skills/resolve-issue/references/second-attempt.md",
         }
         for rel in sorted(allowed):
             with self.subTest(allowed=rel):
