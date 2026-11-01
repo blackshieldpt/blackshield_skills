@@ -37,7 +37,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -48,6 +48,9 @@ EXIT_CONFLICT = 5
 
 DEFAULT_LIMIT = 50
 DEFAULT_TIMEOUT = 30
+PR_HEAD_SCAN_LIMIT = 1000
+MERGE_SHA_ATTEMPTS = 3
+MERGE_SHA_DELAY = 0.5
 SERVER_FORGE_TYPES = ("github", "gitea", "forgejo")
 TOKEN_ENV_VARS = ("FORGE_TOKEN", "GITEA_TOKEN", "FORGEJO_TOKEN")
 
@@ -407,12 +410,7 @@ def _norm_issue_gh(data: dict[str, Any], with_comments: bool = False) -> dict[st
     }
     if with_comments:
         issue["comments"] = [
-            {
-                "author": (comment.get("author") or {}).get("login") or "",
-                "body": comment.get("body") or "",
-                "edited": bool(comment.get("includesCreatedEdit")),
-            }
-            for comment in data.get("comments") or []
+            _norm_comment_gh(comment) for comment in data.get("comments") or []
         ]
     return issue
 
@@ -439,6 +437,7 @@ def _norm_comment_gitea(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "author": (data.get("user") or {}).get("login") or "",
         "body": data.get("body") or "",
+        "created_at": created,
         "edited": bool(created and updated and created != updated),
     }
 
@@ -447,6 +446,7 @@ def _norm_comment_gh(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "author": (data.get("author") or {}).get("login") or "",
         "body": data.get("body") or "",
+        "created_at": data.get("createdAt") or data.get("created_at") or "",
         "edited": bool(data.get("includesCreatedEdit")),
     }
 
@@ -864,6 +864,39 @@ def _paginate(
     return items[:limit]
 
 
+def _scan_pages(
+    ctx: Context,
+    path: str,
+    params: dict[str, Any],
+    scan_limit: int,
+    matches: Callable[[dict[str, Any]], bool],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Walk pages up to ``scan_limit`` items, keeping up to ``limit`` matches."""
+
+    found: list[dict[str, Any]] = []
+    page_size = DEFAULT_LIMIT
+    page = 1
+    scanned = 0
+    while scanned < scan_limit and len(found) < limit:
+        query = dict(params)
+        query["limit"] = page_size
+        query["page"] = page
+        batch = _http_json(ctx, "GET", path, params=query)
+        if not isinstance(batch, list) or not batch:
+            break
+        scanned += len(batch)
+        for item in batch:
+            if matches(item):
+                found.append(item)
+                if len(found) >= limit:
+                    break
+        if len(batch) < page_size:
+            break
+        page += 1
+    return found
+
+
 def _gitea_repo(ctx: Context) -> dict[str, Any]:
     data = _http_json(ctx, "GET", _repo_path(ctx))
     parent = data.get("parent") or {}
@@ -908,7 +941,9 @@ def _gitea_issue_view(ctx: Context, number: int) -> dict[str, Any]:
     comments = _http_json(
         ctx, "GET", _repo_path(ctx, f"/issues/{number}/comments")
     )
-    return _norm_issue_gitea(data, with_comments=comments or [])
+    issue = _norm_issue_gitea(data, with_comments=comments or [])
+    issue["viewer"] = _gitea_viewer_login(ctx)
+    return issue
 
 
 def _gitea_labels(ctx: Context, limit: int) -> list[dict[str, Any]]:
@@ -992,15 +1027,22 @@ def _gitea_pr_list(
     query_state = "closed" if state == "merged" else state
     if query_state != "all":
         params["state"] = query_state
-    if head:
-        params["head"] = head
-    items = _paginate(ctx, _repo_path(ctx, "/pulls"), params, limit)
-    prs = [_norm_pr_gitea(item) for item in items]
-    if state == "merged":
-        prs = [pr for pr in prs if pr["merged"]]
-    if head:
-        prs = [pr for pr in prs if pr["head"] == head]
-    return prs[:limit]
+    path = _repo_path(ctx, "/pulls")
+    if not head:
+        items = _paginate(ctx, path, params, limit)
+        prs = [_norm_pr_gitea(item) for item in items]
+        if state == "merged":
+            prs = [pr for pr in prs if pr["merged"]]
+        return prs[:limit]
+    # Forgejo ignores the ``head`` query parameter, so filter client-side and
+    # scan pages independently of the requested result count.
+    def matches(item: dict[str, Any]) -> bool:
+        if ((item.get("head") or {}).get("ref") or "") != head:
+            return False
+        return state != "merged" or bool(item.get("merged"))
+
+    found = _scan_pages(ctx, path, params, PR_HEAD_SCAN_LIMIT, matches, limit)
+    return [_norm_pr_gitea(item) for item in found]
 
 
 def _gitea_pr_view(ctx: Context, number: int) -> dict[str, Any]:
@@ -1073,7 +1115,25 @@ def _gitea_pr_merge(
                 "forge cannot pin the merged head SHA; refusing to merge",
             )
         raise
-    return {"number": number, "merged": True, "merge_commit": head_sha}
+    # The merge response carries no commit SHA on Forgejo; read it back from the
+    # pull request. A fast-forward or rebase merge legitimately equals the head
+    # SHA, so equality is allowed, but the head SHA is never substituted when
+    # the server does not report a merge commit.
+    merge_commit: Optional[str] = None
+    for attempt in range(MERGE_SHA_ATTEMPTS):
+        pull = _http_json(ctx, "GET", _repo_path(ctx, f"/pulls/{number}"))
+        if isinstance(pull, dict):
+            merge_commit = pull.get("merge_commit_sha") or None
+        if merge_commit:
+            break
+        if attempt + 1 < MERGE_SHA_ATTEMPTS:
+            time.sleep(MERGE_SHA_DELAY)
+    return {
+        "number": number,
+        "merged": True,
+        "merge_commit": merge_commit,
+        "merge_commit_known": bool(merge_commit),
+    }
 
 
 def _gitea_label_list(ctx: Context, limit: int) -> list[dict[str, Any]]:
@@ -1114,6 +1174,43 @@ def cmd_detect(args: argparse.Namespace) -> Any:
     return {"forge": detect_forge(remote)}
 
 
+def _gh_viewer_login(ctx: Context) -> Optional[str]:
+    try:
+        data = _gh_json(["api", "user"])
+    except ForgeError as exc:
+        if exc.code == EXIT_AUTH:
+            return None
+        raise
+    if not isinstance(data, dict):
+        return None
+    return data.get("login") or None
+
+
+def _gitea_viewer_login(ctx: Context) -> Optional[str]:
+    if not ctx.token:
+        return None
+    data = _http_json(ctx, "GET", "/user")
+    if not isinstance(data, dict):
+        return None
+    return data.get("login") or None
+
+
+def cmd_viewer(ctx: Context) -> Any:
+    if ctx.forge == "github":
+        return {"login": _gh_viewer_login(ctx)}
+    return {"login": _gitea_viewer_login(ctx)}
+
+
+def cmd_auth(ctx: Context) -> Any:
+    if ctx.forge == "github":
+        try:
+            run_command(["gh", "auth", "status"])
+        except ForgeError:
+            return {"authenticated": False}
+        return {"authenticated": True}
+    return {"authenticated": bool(ctx.token)}
+
+
 def cmd_repo(ctx: Context) -> Any:
     if ctx.forge == "github":
         return _gh_repo(ctx)
@@ -1128,7 +1225,9 @@ def cmd_issue_list(ctx: Context, args: argparse.Namespace) -> Any:
 
 def cmd_issue_view(ctx: Context, args: argparse.Namespace) -> Any:
     if ctx.forge == "github":
-        return _gh_issue_view(ctx, args.number)
+        issue = _gh_issue_view(ctx, args.number)
+        issue["viewer"] = _gh_viewer_login(ctx)
+        return issue
     return _gitea_issue_view(ctx, args.number)
 
 
@@ -1224,6 +1323,14 @@ def cmd_label_list(ctx: Context, args: argparse.Namespace) -> Any:
 
 
 def cmd_label_create(ctx: Context, args: argparse.Namespace) -> Any:
+    if args.if_not_exists:
+        if ctx.forge == "github":
+            labels = _gh_label_list(ctx, 1000)
+        else:
+            labels = _gitea_label_list(ctx, 1000)
+        for label in labels:
+            if label["name"] == args.name:
+                return label
     if ctx.forge == "github":
         return _gh_label_create(ctx, args.name, args.description, args.color)
     return _gitea_label_create(ctx, args.name, args.description, args.color)
@@ -1247,6 +1354,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("detect", help="detect the forge type")
+
+    viewer = sub.add_parser("viewer", help="show the authenticated user")
+    _add_repo(viewer)
+
+    auth = sub.add_parser("auth", help="show whether the forge is authenticated")
+    _add_repo(auth)
 
     repo = sub.add_parser("repo", help="show the repository")
     _add_repo(repo)
@@ -1323,6 +1436,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_repo(pr_checks)
     pr_checks.add_argument("number", type=int)
     pr_checks.add_argument("--wait", type=int, default=0)
+    pr_checks.add_argument("--require-green", action="store_true")
 
     pr_merge = pr_sub.add_parser("merge")
     _add_repo(pr_merge)
@@ -1344,6 +1458,7 @@ def build_parser() -> argparse.ArgumentParser:
     label_create.add_argument("name")
     label_create.add_argument("--description", required=True)
     label_create.add_argument("--color", required=True)
+    label_create.add_argument("--if-not-exists", action="store_true")
 
     return parser
 
@@ -1353,6 +1468,10 @@ def _dispatch(args: argparse.Namespace) -> Any:
         return cmd_detect(args)
 
     ctx = build_context(args.repo)
+    if args.command == "viewer":
+        return cmd_viewer(ctx)
+    if args.command == "auth":
+        return cmd_auth(ctx)
     if args.command == "repo":
         return cmd_repo(ctx)
 
@@ -1405,6 +1524,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             sys.stdout.write("\n")
     else:
         print(json.dumps(result, indent=2, ensure_ascii=False))
+    if getattr(args, "require_green", False) and isinstance(result, dict):
+        if result.get("state") not in ("success", "no_checks"):
+            return EXIT_FAILED
     return EXIT_OK
 
 

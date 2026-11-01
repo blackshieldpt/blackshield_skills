@@ -14,6 +14,7 @@ import os
 import tempfile
 import unittest
 import urllib.error
+import urllib.parse
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -180,6 +181,72 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(result.code, 0, result.err)
         self.assertEqual(self.json(result), {"forge": "forgejo"})
 
+    # -- viewer and auth -------------------------------------------------
+
+    def test_viewer_authenticated_gitea(self):
+        def http(method, url, body):
+            self.assertEqual(method, "GET")
+            self.assertEqual(url, "https://git.company.tld/api/v1/user")
+            return {"login": "dev"}
+
+        result = self.invoke(["viewer"], env=TOKEN_ENV, http=http)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(self.json(result), {"login": "dev"})
+
+    def test_viewer_github(self):
+        def gh(cmd):
+            self.assertEqual(cmd, ["gh", "api", "user"])
+            return {"login": "octocat"}
+
+        result = self.invoke(["viewer"], gh=gh)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(self.json(result), {"login": "octocat"})
+
+    def test_auth_commands(self):
+        gitea = self.invoke(["auth"], env=TOKEN_ENV)
+        self.assertEqual(gitea.code, 0, gitea.err)
+        self.assertEqual(self.json(gitea), {"authenticated": True})
+
+        anonymous = self.invoke(["auth"], env=GITEA_ENV)
+        self.assertEqual(anonymous.code, 0, anonymous.err)
+        self.assertEqual(self.json(anonymous), {"authenticated": False})
+
+        github = self.invoke(["auth"], gh=lambda cmd: "")
+        self.assertEqual(github.code, 0, github.err)
+        self.assertEqual(self.json(github), {"authenticated": True})
+
+        def no_auth(cmd):
+            raise forge.ForgeError(3, "not logged in")
+
+        github_anonymous = self.invoke(["auth"], gh=no_auth)
+        self.assertEqual(github_anonymous.code, 0, github_anonymous.err)
+        self.assertEqual(self.json(github_anonymous), {"authenticated": False})
+
+    def test_anonymous_viewer_null(self):
+        viewer = self.invoke(["viewer"], env=GITEA_ENV)
+        self.assertEqual(viewer.code, 0, viewer.err)
+        self.assertEqual(self.json(viewer), {"login": None})
+
+        def http(method, url, body):
+            if url.endswith("/issues/4/comments"):
+                return []
+            if url.endswith("/issues/4"):
+                return {
+                    "number": 4,
+                    "title": "Crash",
+                    "body": "trace",
+                    "state": "open",
+                    "labels": [],
+                    "html_url": "https://git.company.tld/acme/widgets/issues/4",
+                    "user": {"login": "dev"},
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            raise AssertionError(f"anonymous read made an unexpected call: {url}")
+
+        viewed = self.invoke(["issue", "view", "4"], env=GITEA_ENV, http=http)
+        self.assertEqual(viewed.code, 0, viewed.err)
+        self.assertIsNone(self.json(viewed)["viewer"])
+
     # -- repository ------------------------------------------------------
 
     def test_repo_github_fields(self):
@@ -267,6 +334,8 @@ class ForgeAdapterTest(unittest.TestCase):
 
     def test_issue_view_github_comments(self):
         def gh(cmd):
+            if cmd[1:3] == ["api", "user"]:
+                return {"login": "rev"}
             self.assertIn("--json", cmd)
             return {
                 "number": 4,
@@ -278,7 +347,12 @@ class ForgeAdapterTest(unittest.TestCase):
                 "author": {"login": "dev"},
                 "createdAt": "2026-01-01T00:00:00Z",
                 "comments": [
-                    {"author": {"login": "rev"}, "body": "seen", "includesCreatedEdit": True}
+                    {
+                        "author": {"login": "rev"},
+                        "body": "seen",
+                        "createdAt": "2026-01-02T00:00:00Z",
+                        "includesCreatedEdit": True,
+                    }
                 ],
             }
 
@@ -286,9 +360,62 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(result.code, 0, result.err)
         data = self.json(result)
         self.assertEqual(data["state"], "open")
+        self.assertEqual(data["viewer"], "rev")
         self.assertEqual(
             data["comments"],
-            [{"author": "rev", "body": "seen", "edited": True}],
+            [
+                {
+                    "author": "rev",
+                    "body": "seen",
+                    "created_at": "2026-01-02T00:00:00Z",
+                    "edited": True,
+                }
+            ],
+        )
+
+    def test_issue_view_gitea_comments_and_viewer(self):
+        def http(method, url, body):
+            self.assertEqual(method, "GET")
+            if url == "https://git.company.tld/api/v1/user":
+                return {"login": "rev"}
+            if url.endswith("/issues/4/comments"):
+                return [
+                    {
+                        "body": "seen",
+                        "user": {"login": "dev"},
+                        "created_at": "2026-01-02T00:00:00Z",
+                        "updated_at": "2026-01-02T00:00:00Z",
+                    }
+                ]
+            if url.endswith("/issues/4"):
+                return {
+                    "number": 4,
+                    "title": "Crash",
+                    "body": "trace",
+                    "state": "open",
+                    "labels": [{"name": "bug"}],
+                    "html_url": "https://git.company.tld/acme/widgets/issues/4",
+                    "user": {"login": "dev"},
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            raise AssertionError(f"unexpected {method} {url}")
+
+        result = self.invoke(
+            ["issue", "view", "4"], env=TOKEN_ENV, http=http
+        )
+        self.assertEqual(result.code, 0, result.err)
+        data = self.json(result)
+        self.assertEqual(data["viewer"], "rev")
+        self.assertEqual(
+            data["comments"],
+            [
+                {
+                    "author": "dev",
+                    "body": "seen",
+                    "created_at": "2026-01-02T00:00:00Z",
+                    "edited": False,
+                }
+            ],
         )
 
     def test_issue_create_resolves_labels(self):
@@ -484,6 +611,45 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual([pr["number"] for pr in data], [2])
         self.assertEqual(data[0]["state"], "merged")
 
+    def test_pr_list_head_scans_beyond_limit(self):
+        def pr(number, head):
+            return {
+                "number": number,
+                "title": f"PR {number}",
+                "body": "",
+                "state": "open",
+                "merged": False,
+                "merge_commit_sha": "",
+                "html_url": f"https://git.company.tld/acme/widgets/pulls/{number}",
+                "base": {"ref": "main"},
+                "head": {"ref": head, "sha": f"sha{number}"},
+                "user": {"login": "dev"},
+            }
+
+        requested_pages = []
+
+        def http(method, url, body):
+            self.assertNotIn("head=", url)
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            page = int(query.get("page", ["1"])[0])
+            requested_pages.append(page)
+            if page == 1:
+                return [pr(number, "other") for number in range(1, 51)]
+            if page == 2:
+                return [pr(99, "feature")]
+            return []
+
+        result = self.invoke(
+            ["pr", "list", "--head", "feature", "--limit", "1"],
+            env=GITEA_ENV,
+            http=http,
+        )
+        self.assertEqual(result.code, 0, result.err)
+        data = self.json(result)
+        self.assertEqual([item["number"] for item in data], [99])
+        self.assertEqual([item["head"] for item in data], ["feature"])
+        self.assertIn(2, requested_pages)
+
     def test_pr_view_github(self):
         def gh(cmd):
             return {
@@ -619,7 +785,117 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(comment.code, 0, comment.err)
         self.assertTrue(self.json(comment)["commented"])
 
+    def test_pr_create_fork_head_is_passed_through(self):
+        captured = {}
+
+        def http(method, url, body):
+            self.assertEqual(method, "POST")
+            self.assertTrue(url.endswith("/pulls"), url)
+            captured.update(body)
+            return {
+                "number": 9,
+                "title": body["title"],
+                "body": body["body"],
+                "state": "open",
+                "merged": False,
+                "merge_commit_sha": "",
+                "html_url": "https://git.company.tld/acme/widgets/pulls/9",
+                "base": {"ref": body["base"]},
+                "head": {"ref": body["head"], "sha": "cafe"},
+                "user": {"login": "dev"},
+            }
+
+        result = self.invoke(
+            [
+                "pr",
+                "create",
+                "--title",
+                "Fork change",
+                "--body-file",
+                str(self.body_file),
+                "--head",
+                "forkowner:feature",
+                "--base",
+                "main",
+            ],
+            env=TOKEN_ENV,
+            http=http,
+        )
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(captured["head"], "forkowner:feature")
+        self.assertEqual(captured["base"], "main")
+        data = self.json(result)
+        for key in (
+            "number",
+            "title",
+            "body",
+            "state",
+            "merged",
+            "merge_commit",
+            "url",
+            "base",
+            "head",
+            "head_sha",
+            "author",
+            "closing_issues",
+            "commits",
+        ):
+            self.assertIn(key, data)
+        self.assertEqual(data["head"], "forkowner:feature")
+        self.assertEqual(data["base"], "main")
+        self.assertEqual(data["commits"], [])
+
     # -- checks ----------------------------------------------------------
+
+    def test_checks_require_green_exit(self):
+        cases = {
+            "failure": (
+                [
+                    {"__typename": "CheckRun", "name": "test", "conclusion": "SUCCESS"},
+                    {"__typename": "StatusContext", "context": "ci", "state": "FAILURE"},
+                ],
+                1,
+            ),
+            "pending": (
+                [{"__typename": "CheckRun", "name": "test", "status": "IN_PROGRESS"}],
+                1,
+            ),
+            "unknown": (
+                [
+                    {"__typename": "CheckRun", "name": "test", "conclusion": "NEUTRAL"},
+                ],
+                1,
+            ),
+            "success": (
+                [
+                    {"__typename": "CheckRun", "name": "test", "conclusion": "SUCCESS"},
+                ],
+                0,
+            ),
+            "no_checks": ([], 0),
+        }
+        for expected, (rollup, exit_code) in cases.items():
+            with self.subTest(state=expected):
+                result = self.invoke(
+                    ["pr", "checks", "6", "--require-green"],
+                    gh=lambda cmd, rollup=rollup: {"statusCheckRollup": rollup},
+                )
+                self.assertEqual(result.code, exit_code, result.err)
+                self.assertEqual(self.json(result)["state"], expected)
+
+    def test_checks_no_checks_exit_zero(self):
+        def http(method, url, body):
+            if url.endswith("/pulls/6"):
+                return {"head": {"sha": "cafe"}}
+            if url.endswith("/commits/cafe/status"):
+                return {"state": "", "statuses": None, "total_count": 0}
+            raise AssertionError(f"unexpected {method} {url}")
+
+        result = self.invoke(
+            ["pr", "checks", "6", "--require-green"], env=GITEA_ENV, http=http
+        )
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(self.json(result)["state"], "no_checks")
 
     def test_pr_checks_states(self):
         cases = {
@@ -701,10 +977,13 @@ class ForgeAdapterTest(unittest.TestCase):
         captured = {}
 
         def http(method, url, body):
-            self.assertEqual(method, "POST")
-            self.assertTrue(url.endswith("/pulls/6/merge"), url)
-            captured.update(body)
-            return b"", 200
+            if method == "POST":
+                self.assertTrue(url.endswith("/pulls/6/merge"), url)
+                captured.update(body)
+                return b"", 200
+            self.assertEqual(method, "GET")
+            self.assertTrue(url.endswith("/pulls/6"), url)
+            return {"number": 6, "merged": True, "merge_commit_sha": "merged456"}
 
         result = self.invoke(
             [
@@ -724,7 +1003,47 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(captured["head_commit_id"], "cafe123")
         data = self.json(result)
         self.assertTrue(data["merged"])
+        self.assertEqual(data["merge_commit"], "merged456")
+        self.assertTrue(data["merge_commit_known"])
+
+    def test_merge_commit_from_followup_get(self):
+        calls = []
+
+        def http(method, url, body):
+            calls.append(method)
+            if method == "POST":
+                self.assertTrue(url.endswith("/pulls/6/merge"), url)
+                return b"", 200
+            self.assertTrue(url.endswith("/pulls/6"), url)
+            return {"number": 6, "merged": True, "merge_commit_sha": "merged999"}
+
+        result = self.invoke(
+            ["pr", "merge", "6", "--method", "merge", "--head-sha", "cafe123"],
+            env=TOKEN_ENV,
+            http=http,
+        )
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(calls, ["POST", "GET"])
+        data = self.json(result)
+        self.assertEqual(data["merge_commit"], "merged999")
+        self.assertNotEqual(data["merge_commit"], "cafe123")
+        self.assertTrue(data["merge_commit_known"])
+
+    def test_merge_commit_equal_head_allowed(self):
+        def http(method, url, body):
+            if method == "POST":
+                return b"", 200
+            return {"number": 6, "merged": True, "merge_commit_sha": "cafe123"}
+
+        result = self.invoke(
+            ["pr", "merge", "6", "--method", "rebase", "--head-sha", "cafe123"],
+            env=TOKEN_ENV,
+            http=http,
+        )
+        self.assertEqual(result.code, 0, result.err)
+        data = self.json(result)
         self.assertEqual(data["merge_commit"], "cafe123")
+        self.assertTrue(data["merge_commit_known"])
 
     def test_pr_merge_github_pins_head_through_api(self):
         def gh(cmd):
@@ -784,6 +1103,44 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(
             self.json(created),
             {"name": "security", "description": "vulnerability", "color": "ff0000"},
+        )
+
+    def test_label_create_if_not_exists(self):
+        posted = []
+
+        def http(method, url, body):
+            if method == "GET" and url.split("?")[0].endswith("/labels"):
+                return [
+                    {"name": "bug", "description": "broken", "color": "#d73a4a"}
+                ]
+            if method == "POST":
+                posted.append((url, body))
+                return {
+                    "name": body["name"],
+                    "description": body["description"],
+                    "color": body["color"],
+                }
+            raise AssertionError(f"unexpected {method} {url}")
+
+        result = self.invoke(
+            [
+                "label",
+                "create",
+                "bug",
+                "--description",
+                "ignored",
+                "--color",
+                "#000000",
+                "--if-not-exists",
+            ],
+            env=TOKEN_ENV,
+            http=http,
+        )
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(posted, [])
+        self.assertEqual(
+            self.json(result),
+            {"name": "bug", "description": "broken", "color": "d73a4a"},
         )
 
     # -- errors ----------------------------------------------------------
