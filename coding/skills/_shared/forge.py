@@ -472,7 +472,7 @@ def _closing_issues(body: str) -> list[int]:
 
 
 def _norm_pr_gh(data: dict[str, Any]) -> dict[str, Any]:
-    merged = bool(data.get("merged"))
+    merged = _lower(data.get("state")) == "merged"
     commits = data.get("commits") or []
     return {
         "number": data.get("number"),
@@ -649,7 +649,7 @@ GH_REPO_FIELDS = (
 )
 GH_ISSUE_FIELDS = "number,title,body,state,labels,url,author,createdAt"
 GH_PR_FIELDS = (
-    "number,title,body,state,merged,mergeCommit,url,baseRefName,headRefName,"
+    "number,title,body,state,mergeCommit,url,baseRefName,headRefName,"
     "headRefOid,author,closingIssuesReferences,commits"
 )
 

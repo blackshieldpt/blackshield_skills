@@ -679,12 +679,13 @@ class ForgeAdapterTest(unittest.TestCase):
 
     def test_pr_view_github(self):
         def gh(cmd):
+            fields = cmd[cmd.index("--json") + 1].split(",")
+            self.assertNotIn("merged", fields)
             return {
                 "number": 6,
                 "title": "Change",
                 "body": "Fixes #2",
                 "state": "MERGED",
-                "merged": True,
                 "mergeCommit": {"oid": "deadbeef"},
                 "url": "https://github.com/acme/widgets/pull/6",
                 "baseRefName": "main",
@@ -705,6 +706,7 @@ class ForgeAdapterTest(unittest.TestCase):
         self.assertEqual(result.code, 0, result.err)
         data = self.json(result)
         self.assertEqual(data["state"], "merged")
+        self.assertTrue(data["merged"])
         self.assertEqual(data["merge_commit"], "deadbeef")
         self.assertEqual(data["closing_issues"], [2])
         self.assertEqual(data["commits"], ["cafe"])
