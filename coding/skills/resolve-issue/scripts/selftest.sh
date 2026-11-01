@@ -169,4 +169,18 @@ git update-ref refs/remotes/origin/master HEAD   # not fetch: newer git recreate
 [ "$("$db")" = master ] || fail "default-branch: main/master after forge failure"
 [ "$(FORGE_TYPE=gitea "$here"/default-branch.sh)" = master ] || fail "default-branch: real forge.py failure falls back"
 
+# default-branch: a forge-controlled name must never reach git as an option or with whitespace
+(
+  cd "$tmp" && mkrepo repo4 main
+  hs="$tmp/hostile/coding/skills"; mkdir -p "$hs/resolve-issue/scripts" "$hs/_shared"
+  cp "$here/default-branch.sh" "$hs/resolve-issue/scripts/"; hdb="$hs/resolve-issue/scripts/default-branch.sh"
+  git remote set-head origin -d
+  printf 'import json\nprint(json.dumps({"default_branch": "--upload-pack=touch %s/pwned"}))\n' "$tmp" > "$hs/_shared/forge.py"
+  [ "$("$hdb")" = main ] && [ ! -e "$tmp/pwned" ] || fail "default-branch: hostile option-like forge name"
+  printf 'import json\nprint(json.dumps({"default_branch": "main\\nevil"}))\n' > "$hs/_shared/forge.py"
+  [ "$("$hdb")" = main ] || fail "default-branch: forge name with a newline"
+  git remote set-head origin main
+  [ "$("$hdb")" = main ] || fail "default-branch: valid origin/HEAD unchanged"
+)
+
 echo "selftest: ok"

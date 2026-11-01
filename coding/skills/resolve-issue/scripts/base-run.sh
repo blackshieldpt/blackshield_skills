@@ -51,7 +51,7 @@ done
 
 main=$("$here/default-branch.sh") || die "default branch could not be resolved"
 GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
-  git -C "$root" fetch -q "$remote" "$main" 2>/dev/null \
+  git -C "$root" fetch -q -- "$remote" "refs/heads/$main:refs/remotes/$remote/$main" 2>/dev/null \
   || echo "base-run.sh: $remote unreachable, using last fetched $remote/$main" >&2
 base=$(git -C "$root" merge-base "$remote/$main" HEAD) || die "cannot find merge-base with $remote/$main"
 # drop only this script's own stale worktrees; never a general prune (other agents pin

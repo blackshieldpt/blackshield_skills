@@ -2,6 +2,7 @@
 # Print the remote default branch name. Takes no arguments.
 set -euo pipefail
 [ $# -eq 0 ] || { echo "usage: $0" >&2; exit 2; }
+valid() { case "$1" in ''|-*|*[[:space:]]*) return 1 ;; esac; git check-ref-format --branch "$1" >/dev/null 2>&1; }
 if b=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null); then
   b=${b#origin/}
   # fetch never moves an existing origin/HEAD, so a renamed default branch leaves it stale
@@ -10,10 +11,11 @@ if b=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null); then
   if [ -n "$r" ] && [ "$r" != "$b" ]; then
     echo "default-branch.sh: warning: origin/HEAD names '$b' but origin's default branch is '$r'; run 'git remote set-head origin -a' and resolve again" >&2
   fi
+  valid "$b" || { echo "default-branch.sh: invalid branch name from origin/HEAD" >&2; exit 1; }
   echo "$b"; exit 0
 fi
 F="$(dirname "$0")/../../_shared/forge.py"
-if [ -f "$F" ] && b=$(python3 -I "$F" repo 2>/dev/null | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("default_branch") or "")' 2>/dev/null) && [ -n "$b" ]; then
+if [ -f "$F" ] && b=$(python3 -I "$F" repo 2>/dev/null | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("default_branch") or "")' 2>/dev/null) && valid "$b"; then
   echo "$b"; exit 0
 fi
 for c in main master; do

@@ -296,6 +296,14 @@ class ForgeWritesTest(unittest.TestCase):
                                "If `gh` is missing", "Requires gh.", "command -v gh"):
                     self.assertNotIn(banned, text)
 
+    def test_default_branch_name_is_validated(self) -> None:
+        db = read(SKILL_DIR / "scripts" / "default-branch.sh")
+        self.assertIn("git check-ref-format --branch", db)
+        self.assertIn("-*|", db)
+        self.assertEqual(db.count('valid "$b"'), 2)
+        br = read(SKILL_DIR / "scripts" / "base-run.sh")
+        self.assertIn('fetch -q -- "$remote" "refs/heads/$main:refs/remotes/$remote/$main"', br)
+
     def test_default_branch_python_is_isolated(self) -> None:
         text = read(SKILL_DIR / "scripts" / "default-branch.sh")
         self.assertIn('python3 -I "$F" repo', text)
