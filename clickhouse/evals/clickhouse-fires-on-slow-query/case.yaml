@@ -1,9 +1,9 @@
 schema_version: "1.1"
 name: "clickhouse-fires-on-slow-query"
-tags: [trigger]
+tags: [trigger, clickhouse]
 runs: 2
 execution:
-  max_turns: 4
+  max_turns: 6
   timeout_seconds: 180
   allowed_tools: [Read, Glob, Grep, Skill]
 graders:
@@ -13,3 +13,9 @@ graders:
     input_match: '"skill"\s*:\s*"(?:[\w-]+:)?clickhouse"'
     min: 1
     arm: both
+  - name: "explains-final-partition-pruning"
+    type: llm
+    focus: last_message
+    weight: 1
+    arm: both
+    criteria: "The response identifies that since 26.3 FINAL skips partition pruning when the partition-key column (created_at) is not in the sorting key, so the query now reads every partition, and proposes a remedy such as setting defer_partition_pruning_after_final = 0 or rebuilding the table with the partition column in the sorting key, stating that it is only safe when an order never moves between partitions."

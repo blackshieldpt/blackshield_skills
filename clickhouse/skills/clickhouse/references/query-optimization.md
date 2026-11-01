@@ -6,7 +6,7 @@ Structure every query so work shrinks the data as early as possible:
 
 1. Filter on sorting-key columns (granule skipping).
 2. Secondary filters. `PREWHERE` is applied automatically on `*MergeTree` tables (`optimize_move_to_prewhere`, on by default) — write it manually only to override the optimizer for a predicate over few small columns that filters most rows. Since **26.10**, `optimize_move_to_prewhere_if_final` defaults to `1`; only conditions that depend on the sorting key and are deterministic within the query are moved, so `FINAL` results are unaffected. Before 26.10 the default is `0`.
-`compatibility` below 26.10 restores the old behavior. A profile or query `SETTINGS` clause can override the default; check `system.settings` (`name`, `value`, `changed`) for the effective value, and do not hand-write `PREWHERE` alongside `FINAL` without understanding that a manual PREWHERE still runs before FINAL where `apply_prewhere_after_final` is false; the automatic move only takes sorting-key, deterministic conditions.
+`compatibility` below 26.10 restores the old behavior. A profile or query `SETTINGS` clause can override the default; check `system.settings` (`name`, `value`, `changed`) for the effective value, and do not hand-write `PREWHERE` alongside `FINAL` without understanding that a manual PREWHERE still runs before FINAL where `apply_prewhere_after_final` is false (the setting exists since 25.12 and defaults to false; older servers always run PREWHERE before FINAL; a row policy deferred by `apply_row_policy_after_final` defers PREWHERE with it); the automatic move only takes sorting-key, deterministic conditions.
 3. `IN` / row-reducing logic.
 4. `JOIN`, `GROUP BY`, window functions.
 
@@ -81,7 +81,7 @@ INNER JOIN (
 
 Better still: denormalize so the join disappears.
 
-If pre-filtering is not possible, switch the algorithm instead of raising the memory limit. `join_algorithm` defaults to `direct,parallel_hash,hash,ie_join` (all in-memory); `grace_hash`, `partial_merge` and `full_sorting_merge` spill to disk and trade latency for surviving a large right side.
+If pre-filtering is not possible, switch the algorithm instead of raising the memory limit. `join_algorithm` defaults to `direct,parallel_hash,hash,ie_join` since 26.8 (`direct,parallel_hash,hash` in 24.12-26.7, `default` before; all in-memory); `grace_hash`, `partial_merge` and `full_sorting_merge` spill to disk and trade latency for surviving a large right side.
 
 ## GROUP BY
 
@@ -138,8 +138,10 @@ Settings that made `FINAL` cheap:
 |---|---|---|
 | `min_age_to_force_merge_seconds` (table) | 86400 (default 0) | Merge any part range older than a day, so `FINAL` has almost nothing left to deduplicate |
 | `max_bytes_to_merge_at_max_space_in_pool` (table) | 100 GB (default 150 GB) | Ceiling for those forced merges; trade merge memory/CPU for fewer parts |
-| `PARTITION BY (client_id % 36)` instead of `toYYYYMM(ts)` | — | With `do_not_merge_across_partitions_select_final=1` (default 0; automatic since 26.2 when every partition-key column is in the primary key) `FINAL` dedups each partition **independently**; a hash-bucket partition on the filter key lets one query hit one bucket and lets 36 workers run without a cross-partition merge. Cost: 36 parts per insert, no time-based partition drops — only for FINAL-dominated tables |
+| `PARTITION BY (client_id % 36)` instead of `toYYYYMM(ts)` | — | With `do_not_merge_across_partitions_select_final=1` (default 0; automatic since 26.2 when every partition-key column is in the primary key) `FINAL` dedups each partition **independently** — correct only because `client_id` is in the sorting key, so one key never spans partitions; set by hand on a table where it can, `FINAL` returns duplicates; a hash-bucket partition on the filter key lets one query hit one bucket and lets 36 workers run without a cross-partition merge. Cost: 36 parts per insert, no time-based partition drops — only for FINAL-dominated tables |
 | `split_parts_ranges_into_intersecting_and_non_intersecting_final`, `split_intersecting_parts_ranges_into_layers_final` | 0 (default 1) | Disabled for this workload after measuring; leave them on unless a `FINAL` query profiles worse with them |
+
+Upgrade trap: since 26.3, `FINAL` skips partition pruning when the partition-key columns are not in the sorting key (rows sharing a key could sit in different partitions). A `FINAL` query filtering on such a partition column reads every partition and can get much slower after the upgrade. Both remedies are correct only when a sorting key never changes partition (e.g. the partition column is set at insert and never updated): on 26.5+ set `defer_partition_pruning_after_final = 0` (the setting does not exist on 26.3-26.4 — upgrade or rebuild); or rebuild the table with the partition column in `ORDER BY` — a full new table + `INSERT ... SELECT`, and on `ReplacingMergeTree` it changes the dedup key, so rows that used to collapse across partitions no longer do.
 
 Granule heuristic from the case study: a trailing key column pays off when each value of the prefix covers at least `index_granularity` (8192) rows — with `(client_id, event_type, toDate(ts))`, ≥ 8192 events per client, type and day. Below that its pruning is marginal (the sparse index still excludes granules via the low-cardinality predecessors, so it is not useless, just not worth reading the column for).
 

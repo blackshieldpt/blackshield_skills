@@ -55,9 +55,9 @@ GROUP BY tenant;
 
 ## POPULATE — only when it is atomic
 
-Since 26.8, `CREATE MATERIALIZED VIEW ... POPULATE` is atomic by default (`materialized_views_populate_atomically = 1`): inserts arriving during creation are delivered exactly once. That applies only to an Atomic database with a MergeTree-family or Memory source, and only to inserts arriving through the local server.
+Since 26.8, `CREATE MATERIALIZED VIEW ... POPULATE` is atomic by default (`materialized_views_populate_atomically = 1`): inserts arriving during creation are delivered exactly once. That applies only to an Atomic database with a MergeTree-family or Memory source, and only to inserts arriving through the local server: rows inserted concurrently on another replica of a `ReplicatedMergeTree` source, or through a `Distributed` table / `ON CLUSTER`, can still be missed or duplicated.
 
-Everywhere else the legacy behaviour holds and rows inserted during view creation are **silently missed or duplicated**: servers older than 26.8, Ordinary databases, sources that are views/`Distributed`/`Merge`/`Buffer`/`Log`, `CREATE OR REPLACE ... POPULATE`, or the setting turned off. `POPULATE` is unsupported in Replicated databases and ClickHouse Cloud. When in doubt, backfill manually as below.
+Everywhere else the legacy behaviour holds and rows inserted during view creation are **silently missed or duplicated**: servers older than 26.8, Ordinary databases, sources that are views/`Distributed`/`Merge`/`Buffer`/`Log`, `CREATE OR REPLACE ... POPULATE`, or the setting turned off. In a Replicated database `POPULATE` is refused unless `database_replicated_allow_heavy_create=1` (forbidden by default since 24.7; it can block the DDL queue), and there it always falls back to the non-atomic path. It is unsupported in ClickHouse Cloud. When in doubt, backfill manually as below.
 
 ## Backfilling
 
@@ -68,7 +68,7 @@ Procedure:
    ```sql
    SELECT date, count() FROM (SELECT * FROM source LIMIT 1000000) GROUP BY date
    ```
-2. Backfill in bounded chunks — one partition or one time window at a time.
+2. Backfill in bounded chunks — one partition or one time window at a time — and give each chunk its own `SETTINGS insert_deduplication_token = 'backfill-<chunk id>'` on a replicated target. Since 26.1 (`deduplicate_insert_select = enable_when_possible`) an `INSERT ... SELECT` is deduplicated only when the SELECT is stable (it has `ORDER BY ALL` and ends in a single stream) or carries a token, so a retried chunk without one lands twice.
 3. Raise rows-per-block (`max_insert_block_size`, `min_insert_block_size_rows`) so the backfill creates few, large parts.
 4. To run the MV chain over data you do not want to persist twice, point the MV at a **`Null` engine source table** and insert into that: the MV fires on the inserted block, the raw rows are discarded, and only the aggregate lands in the target.
 5. Pick a cutover boundary so live ingestion and the backfill do not overlap.

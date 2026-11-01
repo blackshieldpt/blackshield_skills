@@ -1,0 +1,1 @@
+We run ClickHouse 25.8. Events go into a ReplicatedMergeTree table, and a materialized view feeds an AggregatingMergeTree rollup. Our client retries an INSERT after a timeout with exactly the same batch. The raw table always ends up correct, but the hourly rollup is sometimes higher than a count over the raw table for the same hours. What is going on, and how do we fix it?

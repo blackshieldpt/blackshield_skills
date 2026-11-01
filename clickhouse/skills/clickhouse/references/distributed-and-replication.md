@@ -85,16 +85,17 @@ Replicated tables keep a hash per inserted block in Keeper. A retried insert of 
 | `async_insert_deduplicate` | 0 | Legacy switch for async inserts; same condition. Pre-26.2, async inserts are **not** deduplicated unless you set this to 1 |
 | `deduplicate_insert_select` (25.12+) | `enable_when_possible` (since 26.1) | `INSERT ... SELECT` is deduplicated only when the SELECT is stable; `force_enable` throws on unstable selects |
 | `insert_deduplication_token` | `''` | Your own key instead of the content hash. Tracked **per partition**: one insert touching N partitions carries the same token in each |
-| `deduplicate_blocks_in_dependent_materialized_views` | 1 (since 26.2; was 0) | Also dedup the blocks an MV writes to its target. Without it a retried source insert is dropped at the source but **re-applied through every MV**, doubling aggregates |
-| `replicated_deduplication_window` (table) | 10000 | Block hashes kept in Keeper per table |
-| `replicated_deduplication_window_seconds` (table) | 3600 | Hashes older than this are dropped — retries after an hour are not deduplicated |
+| `deduplicate_blocks_in_dependent_materialized_views` | 1 (since 26.2; was 0) | Each MV target runs its own dedup check on retries. With 0, MVs never dedup a retry, and what happens depends on the version: **24.7-25.12** — a retry deduplicated at the source is still pushed through every MV, so MV aggregates **double**; **≤24.6** — the retry is skipped by every MV, so if the first attempt wrote the source but failed before an MV wrote its target, those MV rows stay lost |
+| `replicated_deduplication_window` (table) | 10000 (since 25.9; 1000 in 23.11-25.8, 100 before) | Block hashes kept in Keeper per table |
+| `replicated_deduplication_window_seconds` (table) | 3600 (since 25.10; one week before) | Hashes older than this are dropped — retries after an hour are not deduplicated |
 | `non_replicated_deduplication_window` (table) | 0 | Same window for plain MergeTree; off by default |
 | `replicated_deduplication_window_for_async_inserts` / `_seconds_for_async_inserts` | 10000 / 604800 | Legacy async-insert hash window (`async_blocks` znode) |
 
 Rules:
 - Make batches deterministic (same rows, same order, same boundaries) or set `insert_deduplication_token` per batch from the producer (Kafka offset range, file name + chunk id).
-- The window is 10k blocks / 1 h per table: a slow trickle of retries beyond that lands as duplicates. Size the window to your retry horizon.
-- On pre-26.2 servers, set `deduplicate_blocks_in_dependent_materialized_views = 1` explicitly wherever MVs consume a replicated source and clients retry. The MV docs prescribe exactly this pair (`insert_deduplicate` + `deduplicate_blocks_in_dependent_materialized_views`) for exactly-once through view chains.
+- The window is 10k blocks / 1 h per table on 25.10+ (one week before 25.10, 1000 blocks before 25.9): a slow trickle of retries beyond that lands as duplicates. Size the window to your retry horizon.
+- On pre-26.2 servers, set `deduplicate_blocks_in_dependent_materialized_views = 1` explicitly wherever MVs consume a replicated source and clients retry — otherwise a retry doubles MV aggregates (24.7-25.12) or leaves MV gaps (≤24.6). The MV docs prescribe exactly this pair (`insert_deduplicate` + `deduplicate_blocks_in_dependent_materialized_views`) for exactly-once through view chains.
+- On 24.3-25.12 that setting plus `async_insert=1` throws by default (`throw_if_deduplication_in_dependent_materialized_views_enabled_with_async_insert`, obsolete since 26.1): pick sync inserts or accept MV-side duplicates on retries (MV-side gaps on ≤24.6). On current servers an async insert whose MV emits more than one block per input block throws `NOT_IMPLEMENTED` while the setting is on.
 - Keeper retries inside the insert itself: `insert_keeper_max_retries` (20), backoff 100 ms → 10000 ms.
 
 ## Keeper
@@ -119,7 +120,15 @@ What lives there for a replicated table: the replica list and their sessions, th
 
 ### Read-only / "Session expired"
 
-`system.replicas.is_readonly` is set when the config has no Keeper section, when the Keeper session cannot be re-initialised, or **during** re-initialisation; `is_session_expired` is "basically the same". Causes, in order of frequency: Keeper quorum lost; Keeper latency/GC pauses exceeding the session timeout (slow disk under `force_sync`, co-located Keeper, overloaded network); the ClickHouse process stalled (swap, huge merge) and missed heartbeats; Keeper metadata for the table deleted. Effects: `INSERT` throws, `SELECT` still works. Recover in order: wait for reconnect (`readonly_start_time` tells you how long) → `SYSTEM RESTART REPLICA` → `SYSTEM RESTORE REPLICA` (metadata lost but parts present) → `DETACH TABLE` / `ATTACH TABLE` → `SYSTEM DROP REPLICA` + recreate + resync.
+`system.replicas.is_readonly` is set when the config has no Keeper section, when the Keeper session cannot be re-initialised, or **during** re-initialisation; `is_session_expired` is "basically the same". Causes, in order of frequency: Keeper quorum lost; Keeper latency/GC pauses exceeding the session timeout (slow disk under `force_sync`, co-located Keeper, overloaded network); the ClickHouse process stalled (swap, huge merge) and missed heartbeats; Keeper metadata for the table deleted. Effects: `INSERT` throws, `SELECT` still works. Recover in order, moving down only when the rung's condition holds (each is a proposal under §0 of `SKILL.md`):
+
+1. **Wait for reconnect** — always first; `readonly_start_time` tells you how long. Fix Keeper (quorum, latency, disk), not the replica.
+2. `SYSTEM RESTART REPLICA db.t` — Keeper is healthy again but the table stays read-only. Re-initialises the table's Keeper state; the table is briefly unavailable.
+3. `SYSTEM RESTORE REPLICA db.t` — only when the table's **Keeper metadata is lost** (root, `/replicas`, or this replica's path deleted) and the table is read-only. It re-registers the local parts (every part passes through `detached/`). Not a fix for an unreachable Keeper.
+4. `DETACH TABLE db.t` / `ATTACH TABLE db.t` — the table object is stuck after the rungs above.
+5. Re-create the replica — only when its local data is unusable **and another replica of the same table is healthy and current** (`system.replicas` there: `is_readonly = 0`, small `absolute_delay`), and that replica's `system.replication_queue` has no pending `GET_PART` entries whose parts only the broken replica holds (otherwise dropping it loses them). On the broken host, `DROP TABLE db.t SYNC` removes the local data and its own Keeper entry — `SYSTEM DROP REPLICA` cannot drop the local replica. If its Keeper entry lingers (Keeper was unreachable during the drop, or the host is gone), remove it from a healthy replica with `SYSTEM DROP REPLICA 'r' FROM TABLE db.t` (drops only inactive replicas' Keeper metadata; touches no data on disk) **before** re-running the original `CREATE TABLE` with the same Keeper path; it then fetches every part from the healthy replicas. In a `Replicated` **database** do not use this rung: `DROP TABLE` there is replicated DDL and drops the table on every replica.
+
+**Never drop or re-create the last replica holding good data** — it deletes the only copy. Before rungs 3-5, take a `BACKUP` or `ALTER TABLE ... FREEZE`.
 
 ### What to watch
 
@@ -130,7 +139,7 @@ What lives there for a replicated table: the replica list and their sessions, th
   SELECT name, numChildren, dataLength, mtime
   FROM system.zookeeper WHERE path = '/clickhouse/tables/01/events/replicas';
   ```
-- `SYSTEM SYNC REPLICA t [STRICT | LIGHTWEIGHT [FROM 'r1'] | PULL]` — `LIGHTWEIGHT` waits only for fetch/attach/drop entries, not merges.
+- `SYSTEM SYNC REPLICA t [STRICT | LIGHTWEIGHT [FROM 'r1'] | PULL]` — `LIGHTWEIGHT` waits only for fetch/attach/drop entries, not merges; `PULL` pulls new log entries into the queue and does not wait for anything.
 - Keeper itself: 4-letter-words `mntr` (`zk_avg_latency`, `zk_outstanding_requests`, `zk_num_alive_connections`, `zk_server_state`), `srvr`, `stat`.
 
 ## Backup and restore

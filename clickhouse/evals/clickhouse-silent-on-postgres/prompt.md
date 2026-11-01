@@ -1,1 +1,1 @@
-My PostgreSQL query is slow — it does a sequential scan on a 50M-row table filtered by created_at. What index should I add?
+Our analytics events table in PostgreSQL 16 has 50M rows and a dashboard query filtered by created_at does a sequential scan. We are weighing monthly declarative partitioning, a BRIN index, and a materialized view refreshed every hour for the dashboard aggregates. Which should we do first?

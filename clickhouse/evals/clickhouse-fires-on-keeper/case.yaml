@@ -1,9 +1,9 @@
 schema_version: "1.1"
 name: "clickhouse-fires-on-keeper"
-tags: [trigger]
+tags: [trigger, clickhouse]
 runs: 2
 execution:
-  max_turns: 4
+  max_turns: 6
   timeout_seconds: 180
   allowed_tools: [Read, Glob, Grep, Skill]
 graders:
@@ -13,3 +13,9 @@ graders:
     input_match: '"skill"\s*:\s*"(?:[\w-]+:)?clickhouse"'
     min: 1
     arm: both
+  - name: "recovery-is-conditional-and-safe"
+    type: llm
+    focus: last_message
+    weight: 1
+    arm: both
+    criteria: "The response starts from Keeper health (quorum, latency, dedicated hosts) and system.replicas, escalates recovery in order (wait for reconnect, SYSTEM RESTART REPLICA, SYSTEM RESTORE REPLICA only when Keeper metadata is lost), and never proposes dropping or re-creating a replica unless another healthy replica holds the data."

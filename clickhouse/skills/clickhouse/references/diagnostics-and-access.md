@@ -12,7 +12,7 @@
 | `EXPLAIN PIPELINE` | Processors and parallelism (`× N`); `graph = 1` emits DOT | Thread count, `Resize`, spill/merge stages |
 | `EXPLAIN ESTIMATE` | `parts`, `rows`, `marks` to read per table; MergeTree only | Cheap cost estimate before running |
 | `EXPLAIN SYNTAX` | Rewritten query after AST optimization | See what the optimizer did to your SQL |
-| `EXPLAIN ANALYZE` | Runs the query, annotates plan with time/rows/memory per stage | Actual vs planned; subject to quotas and limits |
+| `EXPLAIN ANALYZE` | Runs the query, annotates plan with time/rows/memory per stage | Actual vs planned; subject to quotas and limits. It executes the query, so on a live server it needs the same explicit yes as running it (`SKILL.md` §0) |
 
 Reading `indexes = 1`: each entry has `Type` (`Partition Min-Max`, `Partition`, `PrimaryKey`, `Skip`, `Statistics`), `Keys`, `Condition`, then `Parts: <after>/<before>` and `Granules: <after>/<before>`.
 

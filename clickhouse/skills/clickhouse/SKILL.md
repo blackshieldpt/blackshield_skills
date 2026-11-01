@@ -1,7 +1,7 @@
 ---
 name: clickhouse
 description: "Practices, tunables and gotchas for designing, querying and operating ClickHouse: MergeTree schema and sorting-key design, partitioning, data types and codecs, projections, dictionaries, schema evolution, query optimization (PREWHERE, JOINs, aggregate states, FINAL), EXPLAIN and system.query_log diagnostics, ingestion, insert deduplication, materialized views, merges and too-many-parts, mutations, Distributed tables, replication and Keeper, backup/restore, access control, Cloud vs OSS. Use when writing ClickHouse DDL/SQL, judging ClickHouse SQL for correctness or performance (including when a code review touches ClickHouse), tuning ingestion or query latency, designing materialized views, or debugging OOM, TOO_MANY_PARTS, read-only tables, stuck mutations, slow merges, or Keeper/ZooKeeper trouble. Skip for non-ClickHouse databases (Postgres, MySQL, Snowflake, Druid, Pinot)."
-version: 1.1.3
+version: 1.2.0
 ---
 
 # ClickHouse Skill
@@ -27,8 +27,15 @@ Reference files, load when the task goes deep:
 
 Against a running ClickHouse, run freely: `SELECT` / `SHOW` / `EXPLAIN` / `DESCRIBE`,
 query-scoped `SETTINGS`, session `SET` of query-level settings, `SYSTEM FLUSH LOGS`,
-`SYSTEM SYNC REPLICA` / `SYSTEM SYNC DATABASE REPLICA` / `SYSTEM WAIT VIEW` (they only
-wait), and `KILL ... TEST` (which only lists).
+`SYSTEM SYNC REPLICA` / `SYSTEM SYNC DATABASE REPLICA` / `SYSTEM WAIT VIEW` (they wait;
+`SYNC REPLICA ... PULL` also pulls new log entries into the local queue without waiting),
+and `KILL ... TEST` (which only lists).
+Two exceptions to "reads are free" need the same explicit yes as a write: `EXPLAIN ANALYZE`
+executes the query it explains, and a `SELECT` from a stream-like table (`Kafka`,
+`RabbitMQ`, `NATS`, `FileLog`, `S3Queue`, `AzureQueue`, Redis Streams) consumes the
+messages it reads, so later MVs and consumers never see them. Never set
+`stream_like_engine_allow_direct_select=1` (direct reads are blocked by default since
+21.12) or read from those tables unasked.
 Anything else — `ALTER` (including `MODIFY SETTING`), `OPTIMIZE`, `KILL`,
 `DROP`/`DETACH`/`ATTACH`, any other `SYSTEM ...`, `INSERT`/`DELETE`/`UPDATE`, server or
 user config file edits (`config.xml`, `users.xml`), and state-changing CLI tools
@@ -42,7 +49,7 @@ recovery commands in this skill are what to propose, not what to run unasked.
 2. **Read less data.** Filter first, project only the columns needed, aggregate last.
 3. **Insert in big batches, rarely.** Each insert block writes one part *per partition it touches*. Frequent small inserts destroy read performance via part count.
 4. **Never `SELECT *`** in production queries.
-5. **Avoid heavyweight mutations** (`ALTER TABLE ... UPDATE/DELETE`) — they rewrite whole parts. Prefer, in order: partition-level `DROP PARTITION`; lightweight `DELETE FROM` (masks rows via `_row_exists`; wide parts hardlink untouched columns, compact parts are still rewritten) and lightweight `UPDATE ... SET` (patch parts; introduced 25.7, still **beta**, needs table settings `enable_block_number_column` and `enable_block_offset_column`); or `ReplacingMergeTree` + version column. `ReplacingMergeTree` deduplicates only at merge time, only within a partition, and on no guaranteed schedule, so exact reads need `FINAL`.
+5. **Avoid heavyweight mutations** (`ALTER TABLE ... UPDATE/DELETE`) — they rewrite whole parts. Prefer, in order: partition-level `DROP PARTITION`; lightweight `DELETE FROM` (masks rows via `_row_exists`; wide parts hardlink untouched columns, compact parts are still rewritten) and lightweight `UPDATE ... SET` (patch parts; experimental in 25.5, **beta** and enabled by default from 25.8, production tier since 26.10; needs table settings `enable_block_number_column` and `enable_block_offset_column`); or `ReplacingMergeTree` + version column. `ReplacingMergeTree` deduplicates only at merge time, only within a partition, and on no guaranteed schedule, so exact reads need `FINAL`.
 6. **Reads and writes are coupled.** Ingestion pressure shows up as query latency; benchmark with concurrent ingestion, not read-only.
 
 ---
@@ -116,7 +123,7 @@ Smallest integer that fits; `Date`/`DateTime` unless sub-second is used; `Decima
 
 1. Filter on **sorting-key columns**.
 2. Apply secondary filters. ClickHouse already moves eligible `WHERE` conditions into `PREWHERE` automatically (`optimize_move_to_prewhere`, on by default, `*MergeTree` engines only); write `PREWHERE` by hand only to override the optimizer for a predicate over few small columns that filters most rows. **With `FINAL`, behavior depends on the version and the effective setting:** since **26.10** `optimize_move_to_prewhere_if_final` defaults to `1` and moves only conditions that depend on the sorting key and are deterministic within the query, so `FINAL` results are unaffected. Before 26.10 the default is `0`.
-`compatibility` below 26.10 restores the old behavior. A profile or query `SETTINGS` clause can override the default; check `system.settings` (`name`, `value`, `changed`) for the effective value, and do not hand-write `PREWHERE` alongside `FINAL` without understanding that a manual PREWHERE still runs before FINAL where `apply_prewhere_after_final` is false; the automatic move only takes sorting-key, deterministic conditions.
+`compatibility` below 26.10 restores the old behavior. A profile or query `SETTINGS` clause can override the default; check `system.settings` (`name`, `value`, `changed`) for the effective value, and do not hand-write `PREWHERE` alongside `FINAL` without understanding that a manual PREWHERE still runs before FINAL where `apply_prewhere_after_final` is false (the setting exists since 25.12 and defaults to false; older servers always run PREWHERE before FINAL; a row policy deferred by `apply_row_policy_after_final` defers PREWHERE with it); the automatic move only takes sorting-key, deterministic conditions.
 3. `IN` and other row-reducing logic.
 4. `JOIN`, `GROUP BY`, window functions — **last**.
 
@@ -142,8 +149,8 @@ See `references/query-optimization.md` for worked good/bad examples.
 | `max_memory_usage` | Per-query cap. Raise deliberately for large `GROUP BY`/`JOIN`/window queries. |
 | `max_bytes_before_external_group_by` / `max_bytes_ratio_before_external_group_by` | Spilling `GROUP BY` to disk. The byte setting defaults to 0, but since **25.1** the ratio setting defaults to **0.5**, so automatic spilling is **on** by default on modern builds (and Cloud sets the byte variant to half the replica memory). Spilling is slow — treat it as a symptom and fix the query rather than relying on it. |
 | `max_insert_block_size` / `min_insert_block_size_rows` | Larger blocks → fewer, larger parts. 150k-10M rows depending on memory. |
-| `max_insert_threads` | 8-16 for bulk loads. |
-| `async_insert` | Buffers small inserts server-side into larger parts; enabled by default on recent versions (OSS default flipped to 1 in 26.2) — confirm with `system.settings`. With the default `wait_for_async_insert=1` the client waits for the flush, so an ack means durable; only `wait_for_async_insert=0` returns immediately and risks loss on crash. Flush triggers: `async_insert_busy_timeout_max_ms` (200 ms; 1000 on Cloud) and `async_insert_max_data_size` (10 MiB; 100 MiB on Cloud). |
+| `max_insert_threads` | Since **26.8** the default is `0` (auto: available cores, reduced under memory pressure), so `INSERT ... SELECT` is already parallel — a fixed 8-16 can *lower* parallelism on big boxes. Before 26.8 the default is 1; set 8-16 for bulk loads there. |
+| `async_insert` | Buffers small inserts server-side into larger parts; enabled by default on recent versions (OSS default flipped to 1 in 26.2) — confirm with `system.settings`. With the default `wait_for_async_insert=1` the client waits for the flush, so an ack means the buffer was flushed to a part — not fsynced (`fsync_after_insert=0` by default) and, without `insert_quorum`, on one replica only; `wait_for_async_insert=0` returns before the flush and loses the buffer on crash. Flush triggers: `async_insert_busy_timeout_max_ms` (200 ms; 1000 on Cloud) and `async_insert_max_data_size` (10 MiB; 100 MiB on Cloud). |
 | `background_pool_size` | Merge concurrency; raise when the merge queue backs up. |
 | `max_bytes_to_merge_at_max_space_in_pool` | Caps part size. Too high → huge, slow, memory-hungry merges. |
 | `insert_quorum` | Default **0** — quorum disabled, writes ack from one replica. Set >1 (or `auto`) for durability, at write-latency cost. |
@@ -158,7 +165,7 @@ See `references/query-optimization.md` for worked good/bad examples.
 - Stagger flush times per partition so historical partitions stop receiving writes.
 - **Pre-sort data before inserting.** Measured: 2.1M → 5.6M rows/s on a single node; 8.8M rows/s with `max_insert_threads=8`.
 - Put a **queue/backpressure layer in front of ClickHouse** (Kafka or custom). Traffic spikes without it collapse ingestion.
-- Retries are safe on `Replicated*MergeTree` **only** because identical blocks are deduplicated by hash (`replicated_deduplication_window` 10000 blocks / 3600 s). Keep batches deterministic or set `insert_deduplication_token`; on pre-26.2 servers also set `deduplicate_blocks_in_dependent_materialized_views=1` or a retried insert is dropped at the source and **re-applied through every MV**. Plain `MergeTree` has no dedup unless `non_replicated_deduplication_window>0`.
+- Retries are safe on `Replicated*MergeTree` **only** because identical blocks are deduplicated by hash (`replicated_deduplication_window` 10000 blocks since 25.9, 1000 before; `replicated_deduplication_window_seconds` 3600 since 25.10, one week before). Keep batches deterministic or set `insert_deduplication_token`. Before 26.2, `deduplicate_blocks_in_dependent_materialized_views` defaults to 0 and MVs do not deduplicate a retry: on **24.7-25.12** a retry deduplicated at the source is still pushed through every MV, so MV aggregates **double**; on **≤24.6** it is skipped by every MV, so MV rows lost when the first attempt failed after the source write stay lost. Set it to 1 on any pre-26.2 server (default since 26.2; on 24.3-25.12 it throws with `async_insert=1`; see `references/distributed-and-replication.md`). Plain `MergeTree` has no dedup unless `non_replicated_deduplication_window>0`.
 - Sharded clusters: write to the **local** tables directly when you control routing; inserts through a `Distributed` table are async by default (spooled on the initiator, watch `system.distribution_queue`), set `internal_replication=true` for replicated shards, and use `GLOBAL IN`/`GLOBAL JOIN` unless the data is sharded by the join key.
 - Ingestion scales linearly with shards (~2.1M rows/s per shard in the referenced benchmark). To scale a *single* read across replicas use parallel replicas (`enable_parallel_replicas=1`, `max_parallel_replicas`, and `cluster_for_parallel_replicas` — `default` on Cloud) — **not** `clusterAllReplicas()`, which treats each replica as a shard and returns duplicated rows on a replicated table.
 - Kafka engine: tune `kafka_num_consumers` (throughput vs. memory/connections) and `kafka_max_block_size` (larger = fewer parts, higher latency). Prefer Protobuf/Avro over `JSONEachRow` for speed.
@@ -170,8 +177,8 @@ See `references/query-optimization.md` for worked good/bad examples.
 - An incremental MV is an **insert trigger**: it runs on every insert block into the source table. It costs ingest latency, memory, and part generation on the target.
 - Define the **target table first**, `CREATE MATERIALIZED VIEW ... TO target`.
 - Use `AggregatingMergeTree` + `-State` combinators in the MV, `-Merge` at query time.
-- **Avoid `POPULATE`** unless you are on ≥ 26.8 with an Atomic database and a MergeTree-family (or Memory) source, where it is atomic by default (`materialized_views_populate_atomically = 1`). Anywhere else — older servers, Ordinary DBs, view/Distributed/Merge/Buffer/Log sources, `CREATE OR REPLACE`, or when disabled — rows inserted during view creation can be missed or duplicated. It is unsupported in Replicated databases and ClickHouse Cloud.
-- Backfill with `INSERT INTO ... SELECT` in bounded chunks; validate the MV query with `LIMIT 1000000` first.
+- **Avoid `POPULATE`** unless you are on ≥ 26.8 with an Atomic database and a MergeTree-family (or Memory) source, where it is atomic by default (`materialized_views_populate_atomically = 1`) — and even then only for inserts arriving through the same server; rows inserted on another replica or through a `Distributed` table / `ON CLUSTER` during creation can still be missed or duplicated. Anywhere else — older servers, Ordinary DBs, view/Distributed/Merge/Buffer/Log sources, `CREATE OR REPLACE`, or when disabled — rows inserted during view creation can be missed or duplicated. In a Replicated database it is refused unless `database_replicated_allow_heavy_create=1` (since 24.7), and even then never atomic; it is unsupported in ClickHouse Cloud.
+- Backfill with `INSERT INTO ... SELECT` in bounded chunks, each with its own `insert_deduplication_token`: since 26.1 (`deduplicate_insert_select = enable_when_possible`) an `INSERT ... SELECT` is deduplicated only when its SELECT is stable (it has `ORDER BY ALL` and ends in a single stream) or a token is set, so a retried chunk without either lands twice. Validate the MV query with `LIMIT 1000000` first.
 - `uniqExactState` on a 200M+ cardinality column can kill a cluster at merge time. Use bounded-size states: `uniqState` (adaptive sampling) or `uniqCombinedState` / `uniqHLL12State` (HyperLogLog).
 - MVs are a top cause of OOM and of data loss during ingest incidents. Monitor their memory and `system.query_views_log`.
 - An incremental MV fires only for inserts into its **left-most** table; JOINs inside MVs rescan the right side per block — use `dictGet`. Mutations, merges and `DROP PARTITION` on the source never propagate.
@@ -189,12 +196,13 @@ See `references/materialized-views.md`.
 | "Merges are processing significantly slower than inserts" | Merge throughput saturated | Increase `background_pool_size`, apply backpressure upstream, relax queue-size limits |
 | `MEMORY_LIMIT_EXCEEDED` on JOIN | Right table too big | Pre-filter right side with `IN (SELECT id FROM left)`; reduce columns; chunk with `LIMIT` |
 | OOM on ingest | Materialized view aggregation | Reduce MV cardinality, avoid `uniqExact*`, shrink insert blocks |
-| Table in read-only mode | Keeper/ZooKeeper failure or replica startup delay | Alert on it; recover **in order**: wait for reconnect → `SYSTEM RESTART REPLICA` → `SYSTEM RESTORE REPLICA` → detach/attach → drop + recreate + resync (see `references/distributed-and-replication.md`) |
+| Table in read-only mode | Keeper/ZooKeeper failure or replica startup delay | Alert on it; recover **in order**, each rung only when its condition holds: wait for reconnect → `SYSTEM RESTART REPLICA` → `SYSTEM RESTORE REPLICA` (only when the table's Keeper metadata is lost) → detach/attach → re-create the replica and re-sync it from a healthy one. **Never** drop or re-create the last replica holding good data. Conditions and exact commands in `references/distributed-and-replication.md` |
 | Query got slower after upgrade | Changed setting defaults | Diff settings between versions; check `system.query_log` |
 | Binary garbage in results | Reading an `AggregateFunction` column directly | Apply the `-Merge` combinator |
 | Slow `ON CLUSTER` DDL | A replica is down | Set client timeouts; check DDL queue length |
 | S3 cost/rate-limit spikes | Part-per-operation write pattern on tiered storage | Use compact parts; hot local SSD cache + S3 cold tier |
-| `SELECT ... FINAL` slow | Reads every `ORDER BY` column, dedups every unmerged duplicate, merges across partitions | Lighter key; `min_age_to_force_merge_seconds` so old parts are already merged; `do_not_merge_across_partitions_select_final=1` (automatic since 26.2 when partition-key columns are in the primary key); for FINAL-dominated tables partition by a hash bucket of the filter key so FINAL parallelises per partition (see `references/query-optimization.md`) |
+| `SELECT ... FINAL` slow | Reads every `ORDER BY` column, dedups every unmerged duplicate, merges across partitions | Lighter key; `min_age_to_force_merge_seconds` so old parts are already merged; `do_not_merge_across_partitions_select_final=1` — correct only when rows sharing a sorting key never span partitions, otherwise `FINAL` returns duplicates (automatic since 26.2 when partition-key columns are in the primary key); for FINAL-dominated tables partition by a hash bucket of the filter key so FINAL parallelises per partition (see `references/query-optimization.md`) |
+| `SELECT ... FINAL` slower after upgrading to 26.3+ | Since 26.3, `FINAL` skips partition pruning when partition-key columns are not in the sorting key. The opt-out `defer_partition_pruning_after_final` (default 1) exists only from 26.5; on 26.3-26.4 there is no switch | Both remedies are correct only if a sorting key never changes partition: on 26.5+ set the setting to 0; or rebuild the table with the partition column in `ORDER BY` (new table + `INSERT ... SELECT`; on `ReplacingMergeTree` this also changes the dedup key) |
 | `count()` dropped after `ALTER ... DELETE` and re-insert of the same rows | Mutations do not clear Keeper dedup hashes; the re-insert is silently deduplicated | Change the block (`insert_deduplication_token`) or `DROP PARTITION` |
 | `SummingMergeTree` attribute column shows random values / rows vanish | Non-key, non-summed columns take an arbitrary value; all-zero rows are deleted | Put every attribute in `ORDER BY`; always read with `sum() ... GROUP BY` |
 | Expired TTL rows still on disk | TTL runs during merges, `merge_with_ttl_timeout` 4 h minimum | Lower it; `ttl_only_drop_parts=1`; partition at TTL granularity |

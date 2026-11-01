@@ -24,9 +24,9 @@ Reads and writes cannot be decoupled: a high part count penalizes query latency 
 |---|---|
 | `max_insert_block_size` | Size of blocks the **server** forms when it parses row formats (default 1048449 rows), e.g. over HTTP. For `INSERT ... SELECT` and MV writes the max is only enforced with `use_strict_insert_block_limits=1` (default 0 since 26.4); otherwise `min_insert_block_size_rows/bytes` govern block size. When `clickhouse-client` reads from a file it parses locally and the setting applies client-side; with the native protocol the client's own batching decides block size |
 | `min_insert_block_size_rows` | 150,000 to 10,000,000 depending on memory budget |
-| `max_insert_threads` | 8-16 for bulk loads |
+| `max_insert_threads` | Since 26.8 default `0` (auto: available cores, reduced under memory pressure) — leave it unless profiling says otherwise; a fixed 8-16 can lower parallelism on big boxes. Before 26.8 default 1: set 8-16 for bulk loads |
 | `async_insert` | Server-side buffering of small inserts into larger parts; default flipped to 1 in OSS 26.2 — verify on your version |
-| `wait_for_async_insert` | Default 1: the client waits for the buffer flush, so an ack means the data is durable. Set to 0 for fire-and-forget throughput — that is where the crash-before-flush loss risk lives |
+| `wait_for_async_insert` | Default 1: the client waits for the buffer flush, so an ack means the data is in a part — not fsynced unless `fsync_after_insert=1` (default 0), and on one replica unless `insert_quorum` is set. Set to 0 for fire-and-forget throughput — that is where the crash-before-flush loss risk lives |
 | `async_insert_busy_timeout_max_ms` | Max buffer wait before flush — 200 ms (1000 on Cloud). Paired with `async_insert_max_data_size` — 10 MiB (100 MiB on Cloud) |
 | `insert_quorum` | Default **0** (disabled — one replica acks). Set >1 or `auto` for durability, at write-latency cost |
 
@@ -58,7 +58,7 @@ At sustained peak (50 nodes, 400-500M rows/s), load average reached 57.9 on 32-c
 Alternatives, cheapest first:
 - `ALTER TABLE ... DROP PARTITION` for bulk removal — metadata-only.
 - Lightweight `DELETE FROM`: still a mutation (`ALTER TABLE UPDATE _row_exists = 0` underneath) but masks rows through the hidden `_row_exists` column and hardlinks untouched columns in **wide** parts; compact parts are fully rewritten.
-- Lightweight `UPDATE ... SET`: writes patch parts; introduced 25.7, still **beta**; requires table settings `enable_block_number_column` and `enable_block_offset_column`.
+- Lightweight `UPDATE ... SET`: writes patch parts; experimental in 25.5, **beta** and enabled by default (`enable_lightweight_update`) from 25.8, production tier since 26.10; requires table settings `enable_block_number_column` and `enable_block_offset_column`.
 - `ReplacingMergeTree` with a version column: rows sharing the **`ORDER BY`** key (not `PRIMARY KEY`) are deduplicated at merge time, keeping the highest version. Caveats that matter: merges happen at an unpredictable time and only within a partition, so duplicates can persist indefinitely and rows with the same key in different partitions are never collapsed. Reads that must be exact need `FINAL` (or an aggregation that tolerates duplicates).
 - `SummingMergeTree` / `AggregatingMergeTree` to fold rows during merges instead of updating them.
 

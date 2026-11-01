@@ -1,1 +1,1 @@
-This ClickHouse query on a MergeTree table ordered by (tenant, ts) takes 40 seconds — why, and what should I change? SELECT count() FROM events WHERE user_id = 42 AND ts > now() - INTERVAL 1 DAY
+After we upgraded ClickHouse from 26.2 to 26.6, this query got about ten times slower: SELECT status, count() FROM orders FINAL WHERE created_at >= '2026-10-01' GROUP BY status. The table is ReplacingMergeTree(version) PARTITION BY toYYYYMM(created_at) ORDER BY (customer_id, order_id). Nothing else changed. Why, and what should we do?
