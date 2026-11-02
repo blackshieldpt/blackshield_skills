@@ -1,6 +1,6 @@
 {
   "name": "coding",
-  "version": "0.20.1",
+  "version": "0.20.2",
   "license": "MIT",
   "description": "General coding workflows: take an issue from filing through implementation, falsification-checked and mutation-verified tests, adversarial review, PR and merge; issue filing with a disproof pass; standalone refutation-vetted code review; codebase audit into self-contained handoff plans, plan critique, cheaper-model plan execution with tech-lead review, plan backlog reconciliation; evidence-gated security audit driven by a CVE-derived bug taxonomy",
   "author": {
