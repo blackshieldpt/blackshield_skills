@@ -325,7 +325,7 @@ class ForgeWritesTest(unittest.TestCase):
 
     def test_reentry_pr_match_requires_viewer_author(self) -> None:
         for phrase in (
-            'python3 "$F" pr list --repo "$REPO" --head <branch>',
+            'python3 -I "$F" pr list --repo "$REPO" --head <branch>',
             "never `<owner>:<branch>`",
             "Count only listed PRs whose `author` equals the `viewer`",
             "More than one open PR by the viewer listed: stop and ask",
@@ -378,9 +378,9 @@ class ForgeWritesTest(unittest.TestCase):
 
     def test_merge_gate_follows_checks_state(self) -> None:
         lines = [line.split("   #")[0].strip() for line in self.block.splitlines()]
-        self.assertIn('python3 "$F" pr checks <PR> --repo "$REPO" --wait 540 --require-green', lines)
+        self.assertIn('python3 -I "$F" pr checks <PR> --repo "$REPO" --wait 540 --require-green', lines)
         self.assertIn(
-            'python3 "$F" pr merge <PR> --repo "$REPO" --method <strategy> --head-sha "$(git rev-parse HEAD)"',
+            'python3 -I "$F" pr merge <PR> --repo "$REPO" --method <strategy> --head-sha "$(git rev-parse HEAD)"',
             lines,
         )
         for phrase in (
@@ -402,10 +402,10 @@ class ForgeWritesTest(unittest.TestCase):
 
     def test_review_gate_reads_review_decision(self) -> None:
         lines = [line.split("   #")[0].strip() for line in self.block.splitlines()]
-        gate = 'python3 "$F" pr view <PR> --repo "$REPO" --reviews'
+        gate = 'python3 -I "$F" pr view <PR> --repo "$REPO" --reviews'
         self.assertIn(gate, lines)
-        checks = next(i for i, l in enumerate(lines) if l.startswith('python3 "$F" pr checks'))
-        merge = next(i for i, l in enumerate(lines) if l.startswith('python3 "$F" pr merge'))
+        checks = next(i for i, l in enumerate(lines) if l.startswith('python3 -I "$F" pr checks'))
+        merge = next(i for i, l in enumerate(lines) if l.startswith('python3 -I "$F" pr merge'))
         self.assertLess(checks, lines.index(gate))
         self.assertLess(lines.index(gate), merge)
         for phrase in (

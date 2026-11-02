@@ -19,8 +19,8 @@ CLOSING = (
     REPO_ROOT / "coding" / "skills" / "improve" / "references" / "closing-the-loop.md"
 )
 
-TARGET_BULLET = '- Resolve the **target repo**: `python3 "$F" repo` reads `origin`. With `fork: true` and a `parent`, the default target is the parent (the GitHub CLI\'s default base repository for a fork; `review` targets it too): read it with `python3 "$F" repo --repo <host>/<parent>` and offer the fork (`<host>/<owner>/<name>`) as the alternative. Fall back to the fork only when the parent\'s `has_issues` is false. If reading the parent exits non-zero (3 or 4: a parent this login cannot see), print its stderr and offer the fork as the target; use it only on the user\'s explicit yes. With `fork: true` and no `parent`, ask which repository to file in. Otherwise the target is `<host>/<owner>/<name>`. Confirm the target with the user before the duplicate search, then set `REPO` to it: `<host>/<parent>` or `<host>/<owner>/<name>`. A non-empty `$REPO` handed in by a caller (§2) is used as given instead. Then `python3 "$F" repo --repo "$REPO"` must show `"has_issues": true`; if the confirmed target\'s `has_issues` is false, stop and say so. Every later `$F` call in this skill carries `--repo "$REPO"`.'
-ISSUES_PREFLIGHT = '1. Preflight: `python3 "$F" repo` succeeds. The target follows file-issue\'s rule: with `fork: true` and a `parent`, the target is the parent, read with `python3 "$F" repo --repo <host>/<parent>`, falling back to the fork only when the parent\'s `has_issues` is false; with `fork: true` and no `parent`, skip issues and say so; otherwise the target is `<host>/<owner>/<name>`. The target\'s `has_issues` is true; set `REPO` to the target; `python3 "$F" auth --repo "$REPO"` prints `"authenticated": true`. If any fails, write the plan files as normal and say why issues were skipped, quoting `$F`\'s stderr.'
+TARGET_BULLET = '- Resolve the **target repo**: `python3 -I "$F" repo` reads `origin`. With `fork: true` and a `parent`, the default target is the parent (the GitHub CLI\'s default base repository for a fork; `review` targets it too): read it with `python3 -I "$F" repo --repo <host>/<parent>` and offer the fork (`<host>/<owner>/<name>`) as the alternative. Fall back to the fork only when the parent\'s `has_issues` is false. If reading the parent exits non-zero (3 or 4: a parent this login cannot see), print its stderr and offer the fork as the target; use it only on the user\'s explicit yes. With `fork: true` and no `parent`, ask which repository to file in. Otherwise the target is `<host>/<owner>/<name>`. Confirm the target with the user before the duplicate search, then set `REPO` to it: `<host>/<parent>` or `<host>/<owner>/<name>`. A non-empty `$REPO` handed in by a caller (§2) is used as given instead. Then `python3 -I "$F" repo --repo "$REPO"` must show `"has_issues": true`; if the confirmed target\'s `has_issues` is false, stop and say so. Every later `$F` call in this skill carries `--repo "$REPO"`.'
+ISSUES_PREFLIGHT = '1. Preflight: `python3 -I "$F" repo` succeeds. The target follows file-issue\'s rule: with `fork: true` and a `parent`, the target is the parent, read with `python3 -I "$F" repo --repo <host>/<parent>`, falling back to the fork only when the parent\'s `has_issues` is false; with `fork: true` and no `parent`, skip issues and say so; otherwise the target is `<host>/<owner>/<name>`. The target\'s `has_issues` is true; set `REPO` to the target; `python3 -I "$F" auth --repo "$REPO"` prints `"authenticated": true`. If any fails, write the plan files as normal and say why issues were skipped, quoting `$F`\'s stderr.'
 ISSUES_CONFIRM = "3. Show the list of titles about to become issues and the target repository; confirm once if interactive. In a non-interactive run, when the target is not origin's own repository (`<host>/<owner>/<name>` of the first `repo` output), publish nothing and list every plan as skipped with that reason."
 
 
@@ -45,7 +45,7 @@ class FileIssueForgeTest(unittest.TestCase):
                 self.assertIn(phrase, self.body)
 
     def test_file_issue_forge_calls_name_repo(self) -> None:
-        captures = re.findall(r'python3 "\$F" ([^`\n]*)', self.raw)
+        captures = re.findall(r'python3 -I "\$F" ([^`\n]*)', self.raw)
         kinds = Counter(
             " ".join(c.split()[:2]) if c.split()[0] in ("issue", "label") else c.split()[0]
             for c in captures
@@ -75,7 +75,7 @@ class FileIssueForgeTest(unittest.TestCase):
     def test_file_issue_fork_defaults_to_parent(self) -> None:
         for phrase in (
             "the default target is the parent",
-            'python3 "$F" repo --repo <host>/<parent>',
+            'python3 -I "$F" repo --repo <host>/<parent>',
             "offer the fork",
             "only when the parent's `has_issues` is false",
             "then set `REPO` to it: `<host>/<parent>` or `<host>/<owner>/<name>`",
@@ -111,7 +111,7 @@ class FileIssueForgeTest(unittest.TestCase):
     def test_file_issue_body_and_labels(self) -> None:
         self.assertIn("--body-file <scratchpad>/issue-body.md", self.raw)
         self.assertIn(
-            'python3 "$F" label create <name> --repo "$REPO" --description '
+            'python3 -I "$F" label create <name> --repo "$REPO" --description '
             '"<what it covers>" --color <hex> --if-not-exists',
             self.body,
         )
@@ -154,15 +154,15 @@ class ImproveIssuesForgeTest(unittest.TestCase):
         raw = CLOSING.read_text(encoding="utf-8")
         section = normalized(raw[raw.index("## `--issues`") :])
         for phrase in (
-            'python3 "$F" repo` succeeds',
-            'python3 "$F" repo --repo <host>/<parent>',
+            'python3 -I "$F" repo` succeeds',
+            'python3 -I "$F" repo --repo <host>/<parent>',
             "falling back to the fork only when the parent's `has_issues` is false",
-            'python3 "$F" auth --repo "$REPO"',
-            'python3 "$F" label create improve --repo "$REPO" --description '
+            'python3 -I "$F" auth --repo "$REPO"',
+            'python3 -I "$F" label create improve --repo "$REPO" --description '
             '"Plan written by coding:improve" --color 5319e7 --if-not-exists',
-            'python3 "$F" label create <category> --repo "$REPO" --description '
+            'python3 -I "$F" label create <category> --repo "$REPO" --description '
             '"coding:improve <category> plan" --color 0075ca --if-not-exists',
-            'python3 "$F" issue create --repo "$REPO" --title "<plan title>" '
+            'python3 -I "$F" issue create --repo "$REPO" --title "<plan title>" '
             "--body-file <plan file>",
             "`visibility`",
             "skip the title confirmation but never the public-repo one",

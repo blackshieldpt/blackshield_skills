@@ -12,12 +12,12 @@ output is one issue on the repo's forge whose body can be handed to
 `resolve-issue` without rework. Filing is outward-facing: show the title and body and get
 a yes before the issue is created.
 
-`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md`. Resolve it to an absolute path once. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported. Pass `--repo "$REPO"` as a subcommand option.
+`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md`. Resolve it to an absolute path once. Always run it with `python3 -I`: `-I` ignores `PYTHON*` variables and user site-packages, so a module planted in the repository being worked on, or reached through `PYTHONPATH`, is not imported. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported. Pass `--repo "$REPO"` as a subcommand option.
 
 ## Preconditions
 
-- Resolve the **target repo**: `python3 "$F" repo` reads `origin`. With `fork: true` and a `parent`, the default target is the parent (the GitHub CLI's default base repository for a fork; `review` targets it too): read it with `python3 "$F" repo --repo <host>/<parent>` and offer the fork (`<host>/<owner>/<name>`) as the alternative. Fall back to the fork only when the parent's `has_issues` is false. If reading the parent exits non-zero (3 or 4: a parent this login cannot see), print its stderr and offer the fork as the target; use it only on the user's explicit yes. With `fork: true` and no `parent`, ask which repository to file in. Otherwise the target is `<host>/<owner>/<name>`. Confirm the target with the user before the duplicate search, then set `REPO` to it: `<host>/<parent>` or `<host>/<owner>/<name>`. A non-empty `$REPO` handed in by a caller (§2) is used as given instead. Then `python3 "$F" repo --repo "$REPO"` must show `"has_issues": true`; if the confirmed target's `has_issues` is false, stop and say so. Every later `$F` call in this skill carries `--repo "$REPO"`.
-- `python3 "$F" auth --repo "$REPO"` prints `"authenticated": true`; otherwise stop and say how to authenticate (on GitHub, log in with the GitHub CLI for `<host>`; on Forgejo/Gitea, set `FORGE_TOKEN`).
+- Resolve the **target repo**: `python3 -I "$F" repo` reads `origin`. With `fork: true` and a `parent`, the default target is the parent (the GitHub CLI's default base repository for a fork; `review` targets it too): read it with `python3 -I "$F" repo --repo <host>/<parent>` and offer the fork (`<host>/<owner>/<name>`) as the alternative. Fall back to the fork only when the parent's `has_issues` is false. If reading the parent exits non-zero (3 or 4: a parent this login cannot see), print its stderr and offer the fork as the target; use it only on the user's explicit yes. With `fork: true` and no `parent`, ask which repository to file in. Otherwise the target is `<host>/<owner>/<name>`. Confirm the target with the user before the duplicate search, then set `REPO` to it: `<host>/<parent>` or `<host>/<owner>/<name>`. A non-empty `$REPO` handed in by a caller (§2) is used as given instead. Then `python3 -I "$F" repo --repo "$REPO"` must show `"has_issues": true`; if the confirmed target's `has_issues` is false, stop and say so. Every later `$F` call in this skill carries `--repo "$REPO"`.
+- `python3 -I "$F" auth --repo "$REPO"` prints `"authenticated": true`; otherwise stop and say how to authenticate (on GitHub, log in with the GitHub CLI for `<host>`; on Forgejo/Gitea, set `FORGE_TOKEN`).
 - On a non-zero `$F` exit, print its stderr and stop without filing (a calling `resolve-issue` is told nothing was filed; the §2 worktree rule still applies); the exceptions are a parent read that fails (above) and a `label create` in §5.
 - When the input is a stack trace, match each frame to `path:line` at the commit the
   user names, else the caller's worktree HEAD, else `HEAD`; if the lines do not match, ask which version produced it
@@ -37,7 +37,7 @@ a yes before the issue is created.
 ## 1. Check for duplicates
 
 ```bash
-python3 "$F" issue list --repo "$REPO" --state all --search "<distinctive words>" --limit 20
+python3 -I "$F" issue list --repo "$REPO" --state all --search "<distinctive words>" --limit 20
 ```
 
 Search on the symptom and the error text now; repeat on the function and file names once
@@ -146,13 +146,13 @@ mood suggests.
 | severity | `severity:critical`, `severity:high`, `severity:medium`, `severity:low` | Exactly one; graded below |
 
 Scope vocabulary, in order of precedence: the repo's project rules; the labels already on
-the repo (the `name` of each entry from `python3 "$F" label list --repo "$REPO" --limit 200`); the components the project structure implies — top-level
+the repo (the `name` of each entry from `python3 -I "$F" label list --repo "$REPO" --limit 200`); the components the project structure implies — top-level
 directories or workspace members (`apps/api`, `web/`, `pkg/`), library or module names,
 and cross-cutting areas that exist as real artifacts (`ci` for pipeline files, `infra`
 for deploy/compose/images, `docs` for documentation-only). Name the component by what
 the repo calls it, not by a generic role. A label that does not exist yet is listed in
 the draft as "to be created" and created in §5, after the user's yes, with
-`python3 "$F" label create <name> --repo "$REPO" --description "<what it covers>" --color <hex> --if-not-exists`; do not create
+`python3 -I "$F" label create <name> --repo "$REPO" --description "<what it covers>" --color <hex> --if-not-exists`; do not create
 more than the issue needs. Colours are fixed so labels read the same across
 repos:
 
@@ -214,7 +214,7 @@ behaviour with the `path:line` where the new behaviour would live, the desired b
 as numbered acceptance claims, and what is explicitly out of scope.
 
 Match the repo's existing issues in tone and length: read two recent ones first
-(`python3 "$F" issue list --repo "$REPO" --limit 5`, then `python3 "$F" issue view <N> --repo "$REPO"`), or the ones project rules point at.
+(`python3 -I "$F" issue list --repo "$REPO" --limit 5`, then `python3 -I "$F" issue view <N> --repo "$REPO"`), or the ones project rules point at.
 
 ## 4. Adversarial check of the draft
 
@@ -281,7 +281,7 @@ check's per-claim verdicts (marked `unvetted` when §4 ran inline). File only af
 verbatim. Then create each label marked "to be created" with the §3 command (an existing label is returned unchanged), write the body to a scratchpad file, and create the issue. If a `label create` exits non-zero (for example 3, no permission), file without that label and say so.
 
 ```bash
-python3 "$F" issue create --repo "$REPO" --title "[high] ..." \
+python3 -I "$F" issue create --repo "$REPO" --title "[high] ..." \
   --label bug --label backend --label severity:high \
   --body-file <scratchpad>/issue-body.md
 ```

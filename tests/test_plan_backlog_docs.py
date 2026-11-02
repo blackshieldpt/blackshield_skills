@@ -108,7 +108,7 @@ class DoneDetectionProcedureTest(unittest.TestCase):
     def test_patch_equivalence_fallback(self) -> None:
         for phrase in (
             "git cherry <default> <plan commit>",
-            'python3 "$F" pr list --head <plan branch> --state merged',
+            'python3 -I "$F" pr list --head <plan branch> --state merged',
             "every output line starts with `-`",
             "no line starts with `+`",
         ):
@@ -311,7 +311,7 @@ class DoneDetectionProcedureTest(unittest.TestCase):
 
     def test_empty_pr_list_counts_only_on_github(self) -> None:
         for phrase in (
-            '`python3 "$F" detect` reports `github`',
+            '`python3 -I "$F" detect` reports `github`',
             "`PR_HEAD_SCAN_LIMIT`",
             "stops at the first page shorter than 50",
             "so an empty list there leaves the plan unverified",
@@ -381,8 +381,8 @@ class ForgeFallbackDocsTest(unittest.TestCase):
     def test_reconcile_skill_uses_forge_fallback(self) -> None:
         text = normalise(read(RECONCILE_SKILL))
         for phrase in (
-            'python3 "$F" pr list --head <plan branch> --state merged',
-            '`python3 "$F" detect`',
+            'python3 -I "$F" pr list --head <plan branch> --state merged',
+            '`python3 -I "$F" detect`',
             "`$F` is `_shared/forge.py` next to this skill's directory",
             "never stops the reconcile",
         ):

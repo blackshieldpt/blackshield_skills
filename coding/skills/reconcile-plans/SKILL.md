@@ -18,7 +18,7 @@ directory (the directory holding this `SKILL.md`), as an absolute path;
 defines the status values (this skill branches on exactly those), the index layout, and
 the falsifiability bar a pre-bar plan may need added.
 
-`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md`. Resolve it to an absolute path once. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported. This skill's stop rule for `$F` is the PR fallback in `$R/closing-the-loop.md`: a failing `$F` never stops the reconcile, and that bullet says what to do instead.
+`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md`. Resolve it to an absolute path once. Always run it with `python3 -I`: `-I` ignores `PYTHON*` variables and user site-packages, so a module planted in the repository being worked on, or reached through `PYTHONPATH`, is not imported. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported. This skill's stop rule for `$F` is the PR fallback in `$R/closing-the-loop.md`: a failing `$F` never stops the reconcile, and that bullet says what to do instead.
 
 If there is no index (`plans/README.md`, or `advisor-plans/README.md` when that is the
 plans directory — closing-the-loop's substitution rule applies throughout), say so and
@@ -35,7 +35,7 @@ These carry the numbering of `coding:improve`'s rules, which the references cite
    `git cherry <default> <plan commit>`, `git patch-id --stable`,
    `git fetch origin pull/<number>/head`, which adds objects but touches no
    working tree,
-   `python3 "$F" pr list --head <plan branch> --state merged`, `python3 "$F" detect`, drift
+   `python3 -I "$F" pr list --head <plan branch> --state merged`, `python3 -I "$F" detect`, drift
    checks, cheap done criteria).
 3. **Every refreshed plan stays fully self-contained.**
 4. **Never reproduce secret values** — `file:line` and the credential type only.

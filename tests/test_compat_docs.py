@@ -51,6 +51,23 @@ F_SENTENCE = (
 )
 F_FALLBACK = "`${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback"
 F_EXIT2 = "Exit 2 alone does not prove the forge is unsupported"
+F_ISOLATED = (
+    "Always run it with `python3 -I`: `-I` ignores `PYTHON*` variables and user "
+    "site-packages, so a module planted in the repository being worked on, or reached through "
+    "`PYTHONPATH`, is not imported."
+)
+ADAPTER_CALL = re.compile(r"""\bpython[\w.]*((?:[ \t\n]+[^\s"'`$]+){0,4})[ \t\n]+(["']?)\$\{?F\b""")
+ISOLATED_FLAG = re.compile(r"-(?!-)[A-Za-z]*I[A-Za-z]*")
+
+
+def unisolated_calls(text: str) -> list[str]:
+    """Adapter calls that are not `python… -I "$F"` (double-quoted, with an -I flag group)."""
+    bad = []
+    for match in ADAPTER_CALL.finditer(text):
+        flags = match.group(1).split()
+        if match.group(2) != '"' or not any(ISOLATED_FLAG.fullmatch(f) for f in flags):
+            bad.append(match.group(0))
+    return bad
 
 
 def table_rows(text: str) -> list[list[str]]:
@@ -137,7 +154,7 @@ class CompatibilityDocsTest(unittest.TestCase):
             F_SENTENCE,
             F_FALLBACK,
             F_EXIT2,
-            'never `python3 "$F" --repo',
+            'never `python3 -I "$F" --repo',
             "When detection prints `unsupported forge` (exit 2), stop and report the host and configuration",
         ):
             with self.subTest(needle=needle):
@@ -161,11 +178,11 @@ class CompatibilityDocsTest(unittest.TestCase):
     def test_review_pr_reads_use_forge(self):
         body = flat(read(REVIEW))
         for needle in (
-            '`python3 "$F" pr view N --repo "$REPO"` (fields',
-            'python3 "$F" pr diff N --repo "$REPO"',
-            'python3 "$F" issue view',
-            'python3 "$F" repo',
-            'python3 "$F" pr list --head <branch> --state open --repo "$REPO"',
+            '`python3 -I "$F" pr view N --repo "$REPO"` (fields',
+            'python3 -I "$F" pr diff N --repo "$REPO"',
+            'python3 -I "$F" issue view',
+            'python3 -I "$F" repo',
+            'python3 -I "$F" pr list --head <branch> --state open --repo "$REPO"',
             "each `commit_messages[].message` (subject and body)",
             "per `closing_issues_external` entry its `number` with `--repo <HOST>/<repo>`",
             "with `fork: true` and a `parent`, `$REPO` is `<host>/<parent>`",
@@ -178,7 +195,7 @@ class CompatibilityDocsTest(unittest.TestCase):
             'list it under "Not reviewed" and continue; do not stop',
             "with exactly 100 the list may be truncated",
             "commit whose parent is not itself listed",
-            '(`python3 "$F" issue view N`, with `--repo "$REPO"` when set',
+            '(`python3 -I "$F" issue view N`, with `--repo "$REPO"` when set',
             "ends in `/OWNER/NAME` or `:OWNER/NAME` (optionally `.git`)",
         ):
             with self.subTest(needle=needle):
@@ -201,7 +218,7 @@ class CompatibilityDocsTest(unittest.TestCase):
         )
         self.assertIsNone(re.search(r"\bgh (pr|repo|issue|api|auth)\b", outside))
         self.assertIn(
-            'python3 "$F" pr list --state merged --limit 10 --repo "$REPO"', outside
+            'python3 -I "$F" pr list --state merged --limit 10 --repo "$REPO"', outside
         )
         self.assertIn("skip this step and say so", outside)
 
@@ -282,6 +299,41 @@ class CompatibilityDocsTest(unittest.TestCase):
                 text = read(path)
                 for banned in ("forge.py", "`$F`", '"$F"'):
                     self.assertNotIn(banned, text, f"{rel} uses the adapter off the allowlist")
+
+    def test_adapter_runs_isolated(self):
+        for sample in (
+            'python3 "$F" repo',
+            'python "$F" repo',
+            'python3 -X utf8 "$F" repo',
+            'python3 -- "$F" repo',
+            'python3.12 "$F" repo',
+            "python3 -I '$F' repo",
+            "python3 -I $F repo",
+            'python3\n"$F" repo',
+        ):
+            with self.subTest(sample=sample):
+                self.assertTrue(unisolated_calls(sample))
+        for sample in ('python3 -I "$F" repo', 'python3 -IE "$F" repo', 'python3 -I -X utf8 "${F}" repo'):
+            with self.subTest(sample=sample):
+                self.assertEqual(unisolated_calls(sample), [])
+        paragraph = "`$F` is `_shared/forge.py` next to"
+        calls = 0
+        carriers = []
+        for path in sorted(CODING.rglob("*")):
+            if not path.is_file() or path.suffix not in (".md", ".sh"):
+                continue
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            text = read(path)
+            calls += len(ADAPTER_CALL.findall(text))
+            with self.subTest(path=rel):
+                self.assertEqual(unisolated_calls(text), [])
+            if path.suffix == ".md" and "$F" in text:
+                carriers.append(rel)
+                with self.subTest(paragraph=rel):
+                    self.assertIn(paragraph, flat(text))
+                    self.assertIn(F_ISOLATED, flat(text))
+        self.assertGreaterEqual(calls, 48)
+        self.assertGreaterEqual(len(carriers), 7, carriers)
 
     def test_shared_directory_is_documentation_and_adapter_only(self):
         shared = sorted(

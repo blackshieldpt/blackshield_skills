@@ -56,9 +56,9 @@ remove it when done.
 Use `coding/skills/_shared/forge.py` for repository, issue, pull request,
 check and label operations. Each skill or reference that runs it names it `$F` and carries this paragraph:
 
-`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md` (for a reference file, the skill that loaded it). Resolve it to an absolute path once. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported.
+`$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md` (for a reference file, the skill that loaded it). Resolve it to an absolute path once. Always run it with `python3 -I`: `-I` ignores `PYTHON*` variables and user site-packages, so a module planted in the repository being worked on, or reached through `PYTHONPATH`, is not imported. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported.
 
-`--repo` is a subcommand option: `python3 "$F" pr view N --repo HOST/OWNER/NAME`, never `python3 "$F" --repo HOST/OWNER/NAME pr view N`. Prefer `HOST/OWNER/NAME` whenever the host is known.
+`--repo` is a subcommand option: `python3 -I "$F" pr view N --repo HOST/OWNER/NAME`, never `python3 -I "$F" --repo HOST/OWNER/NAME pr view N`. Prefer `HOST/OWNER/NAME` whenever the host is known.
 
 When detection prints `unsupported forge` (exit 2), stop and report the host and configuration; do not guess an API or fall back to unauthenticated HTML scraping.
 

@@ -1,6 +1,6 @@
 # PR and merge
 
-`$F` is `_shared/forge.py` next to the loading skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds the `SKILL.md` of the skill that loaded this file (`resolve-issue`). Resolve it to an absolute path once. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow the loading skill's stop rule (SKILL.md Setup, **Scope of the request**): 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported. `$REPO`, `<head>` and `<upstream>` come from SKILL.md Setup (**Repository**).
+`$F` is `_shared/forge.py` next to the loading skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds the `SKILL.md` of the skill that loaded this file (`resolve-issue`). Resolve it to an absolute path once. Always run it with `python3 -I`: `-I` ignores `PYTHON*` variables and user site-packages, so a module planted in the repository being worked on, or reached through `PYTHONPATH`, is not imported. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow the loading skill's stop rule (SKILL.md Setup, **Scope of the request**): 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported. `$REPO`, `<head>` and `<upstream>` come from SKILL.md Setup (**Repository**).
 
 ## Commits
 
@@ -12,11 +12,11 @@ area (`fix(web):`, `fix(drive):`, `test(retention):`, `docs:`). End with the
 git add -- <paths>
 git commit -F <scratchpad>/commit-msg.txt   # message written first: a bare `git commit` opens an editor, and there is no TTY
 git push -u origin HEAD
-python3 "$F" pr create --repo "$REPO" --title "fix(web): ..." --body-file <scratchpad>/pr-body.md --head <head> --base <main>   # body written first
+python3 -I "$F" pr create --repo "$REPO" --title "fix(web): ..." --body-file <scratchpad>/pr-body.md --head <head> --base <main>   # body written first
 ```
 
 On re-entry with commits already pushed, add a commit rather than amending; squash only
-if the repo's history shows squash merges. If the re-entry `python3 "$F" pr list --repo "$REPO" --head <branch>` found an open PR authored by the viewer, `python3 "$F" pr edit <PR> --repo "$REPO" --body-file <file>` instead of creating a second one.
+if the repo's history shows squash merges. If the re-entry `python3 -I "$F" pr list --repo "$REPO" --head <branch>` found an open PR authored by the viewer, `python3 -I "$F" pr edit <PR> --repo "$REPO" --body-file <file>` instead of creating a second one.
 
 ## PR body
 
@@ -55,9 +55,9 @@ git rebase origin/<main>               # immediately before the merge, never in 
 git diff origin/<main> -- CHANGELOG.md # after a keep-both conflict: this PR's entry appears once
 <suite command for the touched area>   # <main> may have grown a call site this PR never saw
 git push --force-with-lease=<branch>:<lease> origin <branch>   # rejected (stale info): someone pushed after the fetch: stop and ask
-python3 "$F" pr checks <PR> --repo "$REPO" --wait 540 --require-green   # read .state per Checks gate, below
-python3 "$F" pr view <PR> --repo "$REPO" --reviews   # review gate: .review_decision per Reviews, below
-python3 "$F" pr merge <PR> --repo "$REPO" --method <strategy> --head-sha "$(git rev-parse HEAD)"   # squash, merge, or rebase per the repo's history; ask if unclear
+python3 -I "$F" pr checks <PR> --repo "$REPO" --wait 540 --require-green   # read .state per Checks gate, below
+python3 -I "$F" pr view <PR> --repo "$REPO" --reviews   # review gate: .review_decision per Reviews, below
+python3 -I "$F" pr merge <PR> --repo "$REPO" --method <strategy> --head-sha "$(git rev-parse HEAD)"   # squash, merge, or rebase per the repo's history; ask if unclear
 git switch <main> && git pull --ff-only   # in a fork: git pull --ff-only <upstream> <main>; with worktrees active: git fetch origin only (parallel-worktrees.md)
 ```
 
