@@ -27,9 +27,12 @@ ROWS = [
     ),
     (
         "`file-issue`, `resolve-issue`, `review --comment`, `improve --issues`",
-        ["yes", "planned", "planned", "planned"],
+        ["yes", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`; token)"],
     ),
-    ("Plan workflows", ["yes", "partial", "partial", "partial"]),
+    (
+        "Plan workflows",
+        ["yes", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`)"],
+    ),
 ]
 
 
@@ -112,6 +115,16 @@ RULE_2 = (
 )
 
 
+WRITE_SENTENCES = (
+    "The write workflows (issue filing, issue resolution, `review --comment` and "
+    "`improve --issues`) and the plan workflows also run through the adapter, with the same "
+    "`_shared` install; on Forgejo/Gitea every write needs a token.",
+    "Where a host cannot start a fresh-context subagent, their disproof and review passes run "
+    "inline and are labelled `unvetted`; `file-issue` files and `resolve-issue` merges only after "
+    "the user accepts that label, and `execute-plan` hands the plan over for manual execution.",
+)
+
+
 def table_rows(text: str) -> list[list[str]]:
     rows = []
     for line in text.splitlines():
@@ -145,7 +158,8 @@ class CompatibilityDocsTest(unittest.TestCase):
                 self.assertIn(area, by_area)
                 self.assertEqual(by_area[area], expected)
         self.assertNotIn("`review` PR, `file-issue`, `resolve-issue`", by_area)
-        self.assertIn("planned", section)
+        self.assertNotIn("planned", section)
+        self.assertNotIn("partial", section)
         self.assertIn("coding/skills/_shared", section)
 
     def test_readme_does_not_overclaim_forge_support(self):
@@ -153,11 +167,18 @@ class CompatibilityDocsTest(unittest.TestCase):
             "## Usage", 1
         )[0]
         body = normalized(section)
-        self.assertIn("not claimed to run on Forgejo/Gitea", body)
-        self.assertIn("until plans 017, 018 and 019 migrate them", body)
-        self.assertIn("still call `gh` directly", body)
+        for sentence in WRITE_SENTENCES:
+            with self.subTest(sentence=sentence):
+                self.assertIn(sentence, body)
         self.assertIn("can confirm a merge but never proves its absence", body)
-        self.assertNotIn("plan 014", body)
+        for banned in (
+            "not claimed to run",
+            "`gh` directly",
+            "stay `partial`",
+        ):
+            with self.subTest(banned=banned):
+                self.assertNotIn(banned, body)
+        self.assertIsNone(re.search(r"\bplans? 0\d\d", body))
 
     def test_readme_forge_config_note(self):
         section = read(README).split("## Compatibility", 1)[1].split(
@@ -169,6 +190,7 @@ class CompatibilityDocsTest(unittest.TestCase):
             "`FORGE_TOKEN`",
             "`GITEA_TOKEN`",
             "`FORGEJO_TOKEN`",
+            "for private repositories and for every write",
             "subpath",
             "`gh auth`",
         ):
