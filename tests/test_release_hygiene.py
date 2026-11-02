@@ -236,38 +236,44 @@ class ReleaseHygieneTests(unittest.TestCase):
         coding_manifest = json.loads(read(PLUGIN_MANIFESTS["coding"]))
         self.assertEqual(
             coding_manifest["version"],
-            "0.19.0",
+            "0.20.0",
             "coding plugin version changed; update the release with the tests",
         )
         review = REPO_ROOT / "coding" / "skills" / "review" / "SKILL.md"
         self.assertEqual(
             frontmatter(review).get("version"),
-            "0.7.0",
+            "0.8.0",
             "review version changed; update the release with the tests",
         )
         reconcile = REPO_ROOT / "coding" / "skills" / "reconcile-plans" / "SKILL.md"
         self.assertEqual(
             frontmatter(reconcile).get("version"),
-            "0.2.0",
+            "0.3.0",
             "reconcile-plans version changed; update the release with the tests",
         )
         improve = REPO_ROOT / "coding" / "skills" / "improve" / "SKILL.md"
         self.assertEqual(
             frontmatter(improve).get("version"),
-            "0.3.0",
+            "0.4.0",
             "improve version changed; update the release with the tests",
         )
         file_issue = REPO_ROOT / "coding" / "skills" / "file-issue" / "SKILL.md"
         self.assertEqual(
             frontmatter(file_issue).get("version"),
-            "0.6.0",
+            "0.7.0",
             "file-issue version changed; update the release with the tests",
         )
         resolve_issue = REPO_ROOT / "coding" / "skills" / "resolve-issue" / "SKILL.md"
         self.assertEqual(
             frontmatter(resolve_issue).get("version"),
-            "0.11.0",
+            "0.12.0",
             "resolve-issue version changed; update the release with the tests",
+        )
+        execute_plan = REPO_ROOT / "coding" / "skills" / "execute-plan" / "SKILL.md"
+        self.assertEqual(
+            frontmatter(execute_plan).get("version"),
+            "0.2.0",
+            "execute-plan version changed; update the release with the tests",
         )
 
     def test_license_scope_is_present(self) -> None:

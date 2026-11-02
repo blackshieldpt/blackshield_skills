@@ -1,7 +1,7 @@
 ---
 name: reconcile-plans
 description: "This skill should be used when the user asks to \"reconcile the plans\", \"update the plan backlog\", \"what's the status of the plans\", \"which plans are done\", \"refresh the plans\", or \"what can be executed next\" — plans written by coding:improve under plans/ (or advisor-plans/). It processes what happened since the last session: verifies DONE plans (merged or approved-but-unintegrated), investigates BLOCKED ones, flags stale IN PROGRESS, refreshes drifted TODOs, retires findings fixed independently, and reports audit-coverage gaps. Never edits source code. Not for running a new audit (coding:improve) or executing a plan (coding:execute-plan)."
-version: 0.2.0
+version: 0.3.0
 ---
 
 <!-- Adapted from shadcn/improve (MIT, see ../improve/LICENSE.md). -->
