@@ -32,7 +32,7 @@ graders:
   - name: "does-not-mutate-git"
     type: tool_used
     tool: Bash
-    input_match: '\bgit\s+(add|commit|checkout|switch|restore|reset|stash|apply|merge|rebase|push)\b'
+    input_match: '\bgit\s+(add|commit|checkout|switch|restore|reset|stash|apply|merge(?!-)|rebase|push)\b'
     min: 0
     max: 0
     arm: both

@@ -6,6 +6,7 @@ They do not prove that a model fires a skill; only the live eval does that.
 
 from __future__ import annotations
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -241,8 +242,18 @@ class ReviewBehaviourTests(unittest.TestCase):
                 self.assertEqual(by_name[name].get("tool"), tool)
                 self.assertEqual(by_name[name].get("max"), 0)
         git = re.compile(by_name["does-not-mutate-git"]["input_match"])
-        self.assertTrue(git.search("git commit -qm fix"))
-        self.assertFalse(git.search("git worktree add /tmp/x abc123"))
+        for write in ("git commit -qm fix", "git merge feature"):
+            for form in (write, json.dumps({"command": write})):
+                with self.subTest(write=form):
+                    self.assertTrue(git.search(form))
+        for read_call in (
+            "git worktree add /tmp/x abc123",
+            "git merge-base --is-ancestor abc123 HEAD",
+            "git merge-base origin/main HEAD",
+        ):
+            for form in (read_call, json.dumps({"command": read_call})):
+                with self.subTest(read=form):
+                    self.assertFalse(git.search(form))
 
     def test_comment_case_forbids_posting(self) -> None:
         case = load_case(REVIEW_COMMENT)
@@ -256,12 +267,23 @@ class ReviewBehaviourTests(unittest.TestCase):
             "gh api -X POST repos/o/r/issues/7/comments",
             "gh api repos/o/r/issues/7/comments -f body=x",
             'python3 "/s/_shared/forge.py" pr comment 7 --body-file /tmp/r.md',
+            'python3 -I "$F" pr comment 7 --repo "$REPO" --body-file /tmp/r.md',
+            'python3 -I "${FORGE}" pr comment 7 --body-file /tmp/r.md',
+            "python3 -I $F pr comment 7 --body-file /tmp/r.md",
         ):
-            with self.subTest(write=write):
-                self.assertTrue(pattern.search(write))
-        for read_call in ("gh pr view 7", "gh api repos/o/r --jq .visibility"):
-            with self.subTest(read=read_call):
-                self.assertFalse(pattern.search(read_call))
+            for form in (write, json.dumps({"command": write})):
+                with self.subTest(write=form):
+                    self.assertTrue(pattern.search(form))
+        for read_call in (
+            "gh pr view 7",
+            "gh api repos/o/r --jq .visibility",
+            'python3 -I "$F" repo --repo "$REPO"',
+            'python3 -I "$F" pr view 7 --repo "$REPO"',
+            'python3 -I "$F" pr list --head b --state open --repo "$REPO"',
+        ):
+            for form in (read_call, json.dumps({"command": read_call})):
+                with self.subTest(read=form):
+                    self.assertFalse(pattern.search(form))
 
 
 class AllCasesTests(unittest.TestCase):

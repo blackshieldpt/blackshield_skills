@@ -18,7 +18,7 @@ graders:
   - name: "does-not-post"
     type: tool_used
     tool: Bash
-    input_match: '\bgh\s+pr\s+(comment|review)\b|\bgh\s+api\b[^\n]*(\s(-X\s*|--method[\s=]+)(POST|PATCH|PUT|DELETE)\b|\s(-f|-F|--field|--raw-field|--input)\b)|forge\.py\S*\s+pr\s+comment\b'
+    input_match: '\bgh\s+pr\s+(comment|review)\b|\bgh\s+api\b[^\n]*(\s(-X\s*|--method[\s=]+)(POST|PATCH|PUT|DELETE)\b|\s(-f|-F|--field|--raw-field|--input)\b)|forge\.py\S*\s+pr\s+comment\b|\$\{?[A-Za-z_]\w*\}?\S*\s+pr\s+comment\b'
     min: 0
     max: 0
     arm: both
