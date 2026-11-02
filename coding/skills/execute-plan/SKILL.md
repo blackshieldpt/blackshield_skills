@@ -1,6 +1,6 @@
 ---
 name: execute-plan
-description: "This skill should be used when the user asks to \"execute plan N\", \"dispatch plan 003 to haiku\", \"run this plan with a cheaper model\", \"hand plans/002-x.md to an executor\", or \"review-merged\" / \"review the merged plans\" — plans written by coding:improve under plans/ (or advisor-plans/). It dispatches one executor subagent in an isolated worktree, reviews its diff like a tech lead against the plan (done criteria re-run, scope, tests, falsifiability bar) and renders APPROVE / REVISE / BLOCK; review-merged reviews several executed plans merged together as one change. Never edits code, merges, or pushes. Not for fixing a GitHub issue end to end (coding:resolve-issue) or for writing or critiquing plans (coding:improve, coding:review-plan)."
+description: "This skill should be used when the user asks to \"execute plan N\", \"dispatch plan 003 to haiku\", \"run this plan with a cheaper model\", \"hand plans/002-x.md to an executor\", or \"review-merged\" / \"review the merged plans\" — plans written by coding:improve under plans/ (or advisor-plans/). It dispatches one executor subagent in an isolated worktree, reviews its diff like a tech lead against the plan (done criteria re-run, scope, tests, falsifiability bar) and renders APPROVE / REVISE / BLOCK; review-merged reviews several executed plans merged together as one change. Never edits code, merges, or pushes. Not for fixing an issue end to end (coding:resolve-issue) or for writing or critiquing plans (coding:improve, coding:review-plan)."
 version: 0.1.1
 argument-hint: "<plan file | plan number> [<model>] | review-merged [<base>]"
 ---
@@ -67,7 +67,7 @@ applies, use the session model and say so in the report; never use a cheaper rev
 without saying so. There is no `quick`/`deep` here: nothing in the review
 is optional.
 
-**Which skill.** A plan from `plans/` goes here. A GitHub issue to take to a merged PR goes
+**Which skill.** A plan from `plans/` goes here. An issue to take to a merged PR goes
 to `coding:resolve-issue`. A drifted plan goes through `coding:reconcile-plans` first, and a
 qualifying plan with no `Premise verified` line through `coding:review-plan`.
 

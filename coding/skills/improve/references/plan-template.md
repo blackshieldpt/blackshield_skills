@@ -71,7 +71,7 @@ broken.
 - **Depends on**: plans/NNN-*.md (or "none")
 - **Category**: bug | security | perf | tests | tech-debt | migration | dx | docs | direction
 - **Planned at**: commit `<short SHA>`, <YYYY-MM-DD>
-- **Issue**: <GitHub issue URL — only when published via `--issues`; omit otherwise>
+- **Issue**: <issue URL — only when published via `--issues`; omit otherwise>
 - **Premise verified**: `pending` when written. Only `coding:review-plan` replaces it (except at `quick`, where `coding:improve` writes `skipped at quick`), with `<YYYY-MM-DD>, by coding:review-plan`, `skipped at quick`, or `n/a — below the bar`. Any rewrite of the plan's Current state, Scope, or Steps — a reconcile refresh, a refinement after BLOCK — resets it to `pending`. For a plan that meets the premise-verifier bar, `coding:execute-plan` dispatches only on a dated `by coding:review-plan` or `skipped at quick`, and re-judges an `n/a` against the bar
 
 ## Why this matters

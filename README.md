@@ -39,21 +39,21 @@ ready-to-copy example.
 
 #### Issues and pull requests
 
-- **`resolve-issue`** takes a defect or feature from GitHub issue to merged PR. It files a
+- **`resolve-issue`** takes a defect or feature from issue to merged PR on GitHub, Forgejo or Gitea. It files a
   missing issue through `file-issue`, writes one regression test per claim, runs it
   against the branch base before the fix and verifies it by mutation after. Before the PR
   opens it runs `review quick issue N`, the built-in review skills and its own
   fresh-context adversarial review. Loop-prevention rules stop repeated failed attempts.
-  Requires `gh`. After editing the helper scripts in `skills/resolve-issue/scripts/`, run
+  Uses `forge.py` (`gh` on GitHub, a token on Forgejo/Gitea). After editing the helper scripts in `skills/resolve-issue/scripts/`, run
   `selftest.sh`.
   *Triggers:* "fix/resolve/address/implement issue N", "open a PR for issue N", "land this
   change". Not ad-hoc fixes with no issue.
-- **`file-issue`** turns a description, error or code location into a GitHub issue in the
+- **`file-issue`** turns a description, error or code location into an issue in the
   house style `resolve-issue` consumes. It checks for duplicates, cites every claim at the
   callee (`path:line` plus a quote), proves the trigger constructible and executes it where
   cheap. Kind, scope and severity labels are applied, with scope inferred from the project
   structure and severity graded by consequence. A fresh-context pass tries to disprove each
-  claim before you see the draft, and the issue is filed with `gh` only after you confirm.
+  claim before you see the draft, and the issue is filed through `forge.py` only after you confirm.
   *Triggers:* "open/file/create an issue", "report this bug", "write this up as an issue".
 
 #### Review and audit
@@ -90,7 +90,7 @@ the reference files under `skills/improve/references/`.
   MED findings go to fresh-context refuters, and the survivors become prioritized,
   self-contained handoff plans under `plans/` for a cheaper model to execute. Arguments:
   a focus (`security`, `perf`, `tests`), `next` for direction, `plan <description>` for a
-  single plan, `--issues` to publish plans with `gh`. Never edits source code.
+  single plan, `--issues` to publish plans as issues through `forge.py`. Never edits source code.
   *Triggers:* "audit this codebase", "what should we improve", "what should we build next".
 - **`review-plan`** critiques and tightens a plan in `plans/` against the template and the
   per-plan falsifiability gate: a cold read by a fresh-context subagent, and a premise
@@ -311,10 +311,10 @@ see a duplicate. OpenCode resolves duplicate IDs by precedence; Codex shows dupl
 names in its selector rather than merging them.
 
 **Portability.** `blueprint` and `clickhouse` are the most portable skills here. The
-`coding` skills are Claude Code-first: they use `$ARGUMENTS`, `${CLAUDE_PLUGIN_ROOT}`,
-Claude subagent types and `gh`. The instructions load, but workflows that depend on those
-harness features may not run unchanged. The `claude plugin eval` commands are Claude
-Code-only.
+`coding` skills read the invocation text (`$ARGUMENTS` on Claude Code), resolve bundled files
+from their own directory (`${CLAUDE_PLUGIN_ROOT}` only as a Claude-only fallback), name
+subagents by role, and reach the forge through `_shared/forge.py`. The `claude plugin eval`
+commands are Claude Code-only.
 
 ## License
 

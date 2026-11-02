@@ -48,7 +48,7 @@ else ever writes that value, and `reconcile`'s dead-executor branch keys on it �
 executor that dies mid-run leaves the row at `TODO`, indistinguishable from one
 never started, so the detection silently never fires.
 
-Spawn **one** `general-purpose` subagent with `isolation: "worktree"`. If the host
+Spawn **one** executor subagent (Claude Code: general-purpose) with `isolation: "worktree"`. If the host
 has subagents but no worktree isolation, create the worktree yourself outside the
 user's working tree — `git worktree add -b <plan branch> <path> <base commit>` —
 tell the executor to work only in `<path>`, record the path in the report, and

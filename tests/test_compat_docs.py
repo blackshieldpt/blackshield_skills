@@ -125,6 +125,15 @@ WRITE_SENTENCES = (
 )
 
 
+PORTABILITY = (
+    "**Portability.** `blueprint` and `clickhouse` are the most portable skills here. The "
+    "`coding` skills read the invocation text (`$ARGUMENTS` on Claude Code), resolve bundled files "
+    "from their own directory (`${CLAUDE_PLUGIN_ROOT}` only as a Claude-only fallback), name "
+    "subagents by role, and reach the forge through `_shared/forge.py`. The `claude plugin eval` "
+    "commands are Claude Code-only."
+)
+
+
 def table_rows(text: str) -> list[list[str]]:
     rows = []
     for line in text.splitlines():
@@ -196,6 +205,79 @@ class CompatibilityDocsTest(unittest.TestCase):
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, section)
+
+    def test_no_coding_skill_runs_gh_directly(self):
+        command = re.compile(r"\bgh (issue|pr|repo|label|auth|api)\b")
+        paths = sorted(CODING.glob("*/SKILL.md"))
+        paths += sorted(CODING.glob("*/references/*.md"))
+        paths += sorted(CODING.glob("*/scripts/*.sh"))
+        paths.append(HARNESS)
+        self.assertGreaterEqual(len(paths), 30)
+        for path in paths:
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            text = read(path)
+            with self.subTest(path=rel):
+                self.assertIsNone(command.search(text))
+                if path.suffix == ".md":
+                    self.assertNotIn("GitHub issue", flat(text))
+        for path in sorted(CODING.glob("*/SKILL.md")):
+            description = re.search(r"(?m)^description: (.*)$", read(path)).group(1)
+            for banned in (
+                "Requires gh",
+                "Requires `gh`.",
+                "with gh",
+                "with `gh`",
+                "gh for PR targets",
+                "via `gh`",
+            ):
+                with self.subTest(skill=path.parent.name, banned=banned):
+                    self.assertNotIn(banned, description)
+
+    def test_skills_use_host_neutral_harness_forms(self):
+        fallback = re.compile(r"Claude(-only| Code) fall ?back|fall back to the Claude-only")
+        skills = sorted(CODING.glob("*/SKILL.md"))
+        self.assertGreaterEqual(len(skills), 8)
+        for path in skills:
+            text = flat(read(path))
+            text = re.sub(r"\(Claude Code: `\$ARGUMENTS`[;)]", "", text)
+            text = " ".join(
+                s.replace("${CLAUDE_PLUGIN_ROOT}", "") if fallback.search(s) else s
+                for s in re.split(r"(?<=\.) ", text)
+            )
+            with self.subTest(skill=path.parent.name):
+                self.assertIsNone(re.search(r"\$ARGUMENTS|CLAUDE_PLUGIN_ROOT", text))
+        loop = flat(read(CODING / "improve" / "references" / "closing-the-loop.md"))
+        self.assertIn(
+            'Spawn **one** executor subagent (Claude Code: general-purpose) with `isolation: "worktree"`.',
+            loop,
+        )
+        self.assertNotIn("Spawn **one** `general-purpose` subagent", loop)
+
+    def test_readme_has_no_gh_only_claims(self):
+        body = flat(read(README))
+        for banned in (
+            "Requires `gh`",
+            "filed with `gh`",
+            "publish plans with `gh`",
+            "from GitHub issue",
+            "into a GitHub issue",
+            "Claude subagent types",
+            "Claude Code-first",
+            "may not run unchanged",
+        ):
+            with self.subTest(banned=banned):
+                self.assertNotIn(banned, body)
+        for needle in (
+            "from issue to merged PR on GitHub, Forgejo or Gitea.",
+            "Uses `forge.py` (`gh` on GitHub, a token on Forgejo/Gitea).",
+            "the issue is filed through `forge.py` only after you confirm.",
+            "`--issues` to publish plans as issues through `forge.py`.",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, body)
+        start = body.index("**Portability.**")
+        end = body.index("## License", start)
+        self.assertEqual(body[start:end], PORTABILITY + " ")
 
     def test_harness_contract(self):
         self.assertTrue(HARNESS.is_file(), "coding/skills/_shared/harness.md missing")
