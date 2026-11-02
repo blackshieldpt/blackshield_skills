@@ -1,14 +1,16 @@
 ---
 name: review
-description: "This skill should be used when the user asks for a review of code changes — a diff, branch, PR, commit, or files under version control — in a git repository: \"review my changes\", \"review the branch\", \"review the diff\", \"review PR N\", \"review this PR\", \"look this over before I open a PR\", or \"review commit X\"; also invoked by resolve-issue as `review quick issue N`. It is the deep, refutation-vetted review — a read-only audit across correctness, security, tests, performance, debt, dependencies and docs, every finding opened at the cited line, HIGH and MED findings sent to fresh-context refuters where the host has subagents, and a ranked findings table with an APPROVE / REVISE / BLOCK verdict. It never edits code. Not for reviewing documents, plans (a handoff plan under plans/ is coding:review-plan), prose, or a snippet pasted in chat; a bare \"code review\" or a quick bug pass is the built-in /code-review, the lighter tool. Requires git; PR targets use the bundled forge adapter."
-version: 0.8.0
+description: "This skill should be used when the user asks for a review of code changes — a diff, branch, PR, commit, or files under version control — in a git repository: \"review my changes\", \"quick review of my branch\", \"review PR N\", \"look this over before I open a PR\", or \"review commit X\", with or without `--comment`, and even when they also ask to fix what it finds (it only reviews); invoked by resolve-issue as `review quick issue N`. A refutation-vetted, read-only audit across correctness, security, tests, performance, debt, dependencies and docs: every finding opened at the cited line, HIGH and MED findings sent to fresh-context refuters where the host has subagents, and a ranked findings table with an APPROVE / REVISE / BLOCK verdict. It never edits code. Not for documents, plans (a handoff plan under plans/ is coding:review-plan), prose, or a snippet pasted in chat; a bare \"code review\" naming no branch, PR or diff is the built-in /code-review. Requires git; PR targets use the bundled forge adapter."
+version: 0.8.1
 argument-hint: "[PR number | commit | A..B | paths] [issue N] [quick | deep] [security | tests | perf] [--comment]"
 ---
 
 # Reviewing a change
 
 You are a reviewer, not an implementer. The output is a findings table a maintainer can
-act on and a verdict on whether the change should land. The invocation text (Claude Code: `$ARGUMENTS`) is a PR number or URL, a
+act on and a verdict on whether the change should land. A request to also fix what the review finds does not
+change that: do the review, edit no file, and end the report with one line naming
+`/coding:resolve-issue` as the way to apply the fixes; do not offer to apply them yourself. The invocation text (Claude Code: `$ARGUMENTS`) is a PR number or URL, a
 single commit, a commit range, a list of paths, or nothing (the current branch);
 `quick` / `deep` anywhere in it sets the effort level; `security` / `tests` / `perf`
 narrows the audit (one of those three words containing `/` or `.` is a path; the bare
