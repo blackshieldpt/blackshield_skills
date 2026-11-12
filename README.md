@@ -83,6 +83,25 @@ ready-to-copy example.
 `improve` writes plans; the other three critique, execute and track them. All four share
 the reference files under `skills/improve/references/`.
 
+```mermaid
+flowchart TD
+    subgraph improve["improve (read-only on source)"]
+        R["Recon<br/>stack skills, intent docs, prior backlog"] --> A["Audit<br/>parallel subagents per category"]
+        A --> V["Vet and refute<br/>fresh-context verifiers on HIGH/MED"]
+        V --> S{"User picks findings"}
+        S --> W["Write plans<br/>plans/NNN-slug.md + index"]
+        R -. "plan description (skips audit)" .-> W
+    end
+    W --> RP["review-plan<br/>cold read + premise verifier"]
+    W -. "--issues" .-> I["Forge issues"]
+    RP --> EP["execute-plan<br/>executor in worktree, tech-lead review"]
+    EP -- "REVISE (max 2)" --> EP
+    EP -- "APPROVE" --> M["User merges"]
+    EP -- "BLOCK (plan refined)" --> RP
+    M --> RC["reconcile-plans<br/>verify DONE, investigate BLOCKED, refresh TODO"]
+    RC -- "backlog + coverage gaps" --> R
+```
+
 - **`improve`** is a senior-advisor survey of a codebase, adapted from
   [shadcn/improve](https://github.com/shadcn/improve) (MIT). It runs recon with stack-skill
   loading, then a parallel audit across correctness, security, performance, tests, debt,
