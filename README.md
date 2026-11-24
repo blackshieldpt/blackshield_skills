@@ -140,9 +140,12 @@ flowchart TD
   checkout) from `CLAUDE.md`, `AGENTS.md` or a `qa-rules` project skill. An adopting repo must
   provide a `setup` that recreates gitignored files in a fresh worktree, a foreground `run`, and
   those rules. Every command gets `QA_WORKTREE` and `QA_PRIMARY`. `version` is required for
-  ACCEPT and must ask the running app which build it serves (not git); `isolated: yes` declares
-  that the app touches no shared database, email or webhook, and state-changing requests need it.
-  Both count only when declared at the first parent of the merge point. Every report ends with
+  ACCEPT, and for GREEN or GO whenever the skill starts the app for a suite; it must ask the
+  running app which build it serves (not git). `isolated: yes` declares that the app touches no
+  shared database, email or webhook, and state-changing requests need it. Neither counts when
+  the change under test added it: `accept` needs each at the first parent of the merge point
+  (else `isolated: yes` never counts), and `main` needs the same `version` at its `<since-ref>`
+  (under `gate`, the gate's). Every report ends with
   one `QA-VERDICT: <mode> <verdict> <sha>` line. Drivers read only the last non-empty line and
   treat as success only ACCEPT for `accept`, GREEN for `main`, and GO or DEPLOYED for `gate`
   (a `gate deploy` request succeeds only on DEPLOYED). Any line ending in `unvetted` is
@@ -170,7 +173,9 @@ flowchart TD
   tags only on released commits (lightweight or CI build tags are ignored); and drivers that
   serialize deploys (without a lock, one driver's rollback can undo another's DEPLOYED).
   *Triggers:* "check that issue N works now that it is merged", "acceptance-test PR N",
-  "QA plan N against the running app", "verify a merged change does what the issue asked".
+  "QA plan N against the running app", "verify a merged change does what the issue asked",
+  "run the e2e and smoke tests on main", "which merge broke main", "is this test failure on
+  main flaky", "is main ready to release", "check release readiness".
 
 ### ClickHouse
 
