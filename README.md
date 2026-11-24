@@ -181,6 +181,14 @@ flowchart TD
   "QA plan N against the running app", "verify a merged change does what the issue asked",
   "run the e2e and smoke tests on main", "which merge broke main", "is this test failure on
   main flaky", "is main ready to release", "check release readiness".
+  `coding/skills/qa/examples/playwright/` is a working sample channel. Copy it to `qa/` in the
+  project, merge it to the default branch before the change you want to test, and declare
+  `- channel-web: npx playwright test -c qa/playwright.config.ts` and
+  `- channel-web-doc: qa/channel.md`. `channel.spec.ts` reads the steps from `QA_STEPS`, refuses
+  any origin other than the loopback `QA_URL`, and prints one JSON line of observations per
+  step; `channel.md` lists its actions and marks the read-only ones. Its config has no
+  `webServer` and no retries, so it drives only the app the skill started and never repeats a
+  state change.
 
 ### ClickHouse
 
