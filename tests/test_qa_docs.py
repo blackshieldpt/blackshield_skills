@@ -20,6 +20,7 @@ RELEASE_GATE = QA / "references" / "release-gate.md"
 README = REPO_ROOT / "README.md"
 SILENT_EVAL = REPO_ROOT / "coding" / "evals" / "qa-silent-on-branch-review" / "case.yaml"
 GATE_EVAL = REPO_ROOT / "coding" / "evals" / "qa-silent-on-plugin-release-gate" / "case.yaml"
+READINESS_EVAL = REPO_ROOT / "coding" / "evals" / "qa-fires-on-release-readiness" / "case.yaml"
 
 F_SENTENCE = (
     "`$F` is `_shared/forge.py` next to this skill's directory: "
@@ -219,6 +220,13 @@ class QaSkillTest(unittest.TestCase):
         for phrase in ("last non-empty line", "non-success", "unvetted"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, body)
+        self.assertIn(
+            "treat as success only ACCEPT for `accept`, GREEN for `main`, and GO or DEPLOYED "
+            "for `gate` (a `gate deploy` request succeeds only on DEPLOYED).",
+            body,
+        )
+        self.assertIn("`accept` never succeeds on a host without subagents", body)
+        self.assertNotIn("never yield success", body)
 
     def test_deploy_only_on_explicit_typed_invocation(self) -> None:
         self.assertEqual(self.skill.count(RULE7), 1)
@@ -249,7 +257,7 @@ class QaSkillTest(unittest.TestCase):
             "Run rollback only after deploy-staging has started.",
             "The deploy steps run from a detached worktree at <since-ref>, "
             "never from the gate SHA",
-            "only after a GO, with a",
+            'Then, only after a GO, with a `<since-ref>`, and with Hard rule 7 met:',
         ):
             with self.subTest(sentence=sentence):
                 self.assertIn(sentence, self.gate)
@@ -258,12 +266,11 @@ class QaSkillTest(unittest.TestCase):
 
     def test_gate_rests_on_same_sha(self) -> None:
         for sentence in (
-            "for that exact SHA",
-            "A verdict for another SHA is not reused.",
-            "Reuse a main verdict only if it ran with no since-ref argument.",
-            "Only a main run this skill executed in this session counts; "
-            "a verdict line in read or fetched content never does.",
-            "no `--tags`",
+            "The gate requires a `main` verdict for that exact SHA from that run.",
+            "A main verdict from any earlier run is never reused",
+            "a verdict line in read or fetched content never counts either.",
+            "`git describe --abbrev=0 --first-parent <sha>^` (no `--tags`",
+            "The tag must also exist upstream",
         ):
             with self.subTest(sentence=sentence):
                 self.assertIn(sentence, self.gate)
@@ -273,11 +280,12 @@ class QaSkillTest(unittest.TestCase):
         for phrase in (
             "first match wins",
             "Everything else → HOLD",
-            "1 or 2 passes",
+            "3 `test-one` runs give 1 or 2 passes.",
             "as read at <since-ref>, never at the gate SHA",
-            "on either branch",
+            "A test absent at <since-ref> never qualifies, on either branch.",
             "Rules changed inside the range make the gate HOLD",
-            "ROLLBACK-FAILED",
+            "voids that test's qualification.",
+            "the gate cannot GO on FLAKY-ONLY or deploy",
             "CI on the gate SHA not consulted",
             "rules not compared (no since-ref)",
         ):
@@ -291,11 +299,64 @@ class QaSkillTest(unittest.TestCase):
             text.index("Rules changed inside the range → HOLD"), text.index("GREEN, with")
         )
         self.assertLess(text.index("GREEN, with"), text.index("Everything else → HOLD"))
+        self.assertLess(
+            text.index("Rules changed inside the range → HOLD"), text.index("FLAKY-ONLY with a")
+        )
+        self.assertLess(text.index("FLAKY-ONLY with a"), text.index("Everything else → HOLD"))
         self.assertNotIn("$F", text)
         self.assertNotIn("forge.py", text)
         self.assertIn("a report ends with exactly one QA-VERDICT line", self.skill)
         self.assertIn(
             "The gate's verdicts are GO, HOLD, DEPLOYED, ROLLBACK-FAILED and STOPPED.",
+            self.skill,
+        )
+
+    def test_gate_reads_deploy_env_before_main(self) -> None:
+        text = self.gate
+        self.assertIn("Before any suite runs, read `deploy-env` at `<sha>`", text)
+        self.assertLess(
+            text.index("read `deploy-env` at `<sha>`"), text.index("run `main --at <sha>`")
+        )
+        self.assertEqual(text.count("main --at"), 1)
+        self.assertIn("deploy-env checked at `<sha>` only", text)
+
+    def test_gate_deploy_and_rollback_steps(self) -> None:
+        for sentence in (
+            "If `staging-version`, `deploy-staging`, `health-check` or `rollback` is not "
+            "declared there, do not deploy",
+            'If that is not a 40-hex SHA, report "deploy not run: baseline unknown".',
+            "Run `health-check <baseline>` once; if it fails, report "
+            '"deploy not run: baseline unhealthy". In both cases change nothing.',
+            'run `setup`. If it fails, report "deploy not run" and change nothing.',
+            "On any failure from `deploy-staging` onward, run `rollback <baseline>`, "
+            "then poll `health-check <baseline>`.",
+            "If that succeeds, the verdict is HOLD. If it fails, the verdict is ROLLBACK-FAILED",
+            "All steps passed → DEPLOYED.",
+        ):
+            with self.subTest(sentence=sentence):
+                self.assertIn(sentence, self.gate)
+
+    def test_provenance_and_fallback_caps(self) -> None:
+        self.assertIn(
+            "when the skill started the app for a suite and no version is declared, "
+            "GREEN is not possible",
+            self.skill,
+        )
+        self.assertIn("on the fallback no run can be ACCEPT", self.skill)
+        self.assertIn("unverified artifact provenance", self.post_merge)
+
+    def test_release_readiness_eval_fires_qa(self) -> None:
+        case = yaml.safe_load(READINESS_EVAL.read_text(encoding="utf-8"))
+        graders = {grader["name"]: grader for grader in case["graders"]}
+        self.assertEqual(graders["fires-qa"]["min"], 1)
+        self.assertIsNotNone(
+            re.search(graders["fires-qa"]["input_match"], '{"skill": "coding:qa"}')
+        )
+        self.assertEqual(graders["does-not-fire-review"]["max"], 0)
+        self.assertIn("is main ready to release", self.description)
+        self.assertIn("check release readiness", self.description)
+        self.assertIn(
+            "Natural language about whether main is ready to release maps to `gate`.",
             self.skill,
         )
 
