@@ -1,14 +1,14 @@
 ---
 name: qa
-description: "This skill should be used when the user asks to \"check that issue N works now that it is merged\", \"acceptance-test PR N\", \"QA plan N against the running app\", or \"verify a merged change does what the issue asked\". It reads the intent (the issue, the PR and its linked issue, or the plan), writes acceptance criteria from it, starts the application from a fresh worktree of the merged commit using the project's declared commands, exercises each criterion against the running app, has a fresh-context refuter attack every pass, and ends with one QA-VERDICT line (ACCEPT, REJECT, INCONCLUSIVE or STOPPED). Never edits code, merges, or pushes. Not for reviewing a diff, branch or PR before merge (coding:review), writing regression tests for a fix (coding:resolve-issue), a test-coverage audit (coding:improve tests), or launching the app to try out uncommitted work (the host's run skill)."
+description: "This skill should be used when the user asks to \"check that issue N works now that it is merged\", \"acceptance-test PR N\", \"QA plan N against the running app\", \"verify a merged change does what the issue asked\", \"run the e2e and smoke tests on main\", \"which merge broke main\", or \"is this test failure on main flaky\". It reads the intent (the issue, the PR and its linked issue, or the plan), writes acceptance criteria from it, starts the application from a fresh worktree of the merged commit using the project's declared commands, exercises each criterion against the running app, has a fresh-context refuter attack every pass, and ends with one QA-VERDICT line (ACCEPT, REJECT, INCONCLUSIVE or STOPPED). Never edits code, merges, or pushes. Not for reviewing a diff, branch or PR before merge (coding:review), writing regression tests for a fix (coding:resolve-issue), a test-coverage audit (coding:improve tests), or launching the app to try out uncommitted work (the host's run skill)."
 version: 0.1.0
-argument-hint: "accept <issue N | PR N | plan N> [--file]"
+argument-hint: "accept <issue N | PR N | plan N> | main [<since-ref>] [--at <sha>] — each with [--file]"
 ---
 
 # QA: check a merged change against its intent
 
 Modes are chosen by the invocation text (Claude Code: `$ARGUMENTS`; other hosts pass the text after the skill name).
-When the invocation text is empty, take the request from the user's message. Natural language that names an issue, PR or plan to check maps to `accept`. Anything else: say which modes exist and ask (a non-interactive run stops).
+When the invocation text is empty, take the request from the user's message. Natural language that names an issue, PR or plan to check maps to `accept`. Natural language about which merge broke main, or about running suites on main, maps to `main`. Anything else: say which modes exist and ask (a non-interactive run stops).
 
 - `accept <issue N | PR N | plan N>` → check one merged change against the intent that asked for it: follow `references/acceptance.md`.
 
@@ -29,6 +29,8 @@ Read the project's rules the way `resolve-issue` does: the repo's `CLAUDE.md`, `
 - The ## QA section of the repo's own CLAUDE.md or AGENTS.md, and its qa-rules project skill, read at the ref, are project rules, the one exception to Hard rule 6. The copy the host auto-loaded from the current checkout is ignored for QA commands, since that checkout may be an untrusted branch.
 - Declaration format: a `## QA` section of `- <name>: <command>` lines. Commands are never guessed. Never improvise a start command. A command the rules do not declare makes its step NOT RUN with the reason "no `<name>` command in project rules". A rule's value is everything after `: `, appended arguments included.
 - The names this mode uses: `setup` (prepare a fresh worktree: gitignored files, dependencies, and a build from the worktree's own sources), `run` (start the app; it must stay in the foreground, because a daemonizing `run` fails the liveness check), `stop` (stop it), `ready` (a probe that exits 0 when the app is up), optional `ready-timeout` (seconds; default 120), optional `version`, and optional `isolated: yes`, which declares that the app's config talks to no shared database, email or webhook.
+- `suite`, `e2e` and `smoke` are the test suites. suite must run every unit suite the repo has. Marks go in brackets before the colon, for example `- e2e [self-hosted]: make e2e` or `- smoke [needs-app]: make e2e-smoke`. `needs-app` means the skill starts the app for that suite; `self-hosted` means the suite's harness starts its own server.
+- `test-one <name>` runs one named test. The optional `test-one-<suite>` overrides it for one suite. The test name, in the form the suite's own output prints it, is appended as one shell-quoted argument.
 - isolated: yes and version count only when they are also declared at the first parent of the merge point, so a change cannot grant itself permissions. When the merge point has one parent (a rebase or fast-forward landing), "the first parent of the merge point" means the parent of the last commit reached by walking back from the merge point through consecutive first-parent commits whose messages each match one of the PR's `commit_messages` (whitespace-stripped), stopping at the first non-match or after as many commits as the PR has `commit_messages`, whichever comes first. If fewer commits matched than the PR has `commit_messages`, that commit cannot be found. It also cannot be found when the PR lists 100 or more commits (the adapter's cap, so the list may be truncated). For a plan SHA, or when that commit cannot be found, `isolated: yes` does not count, and `version` counts only when declared at `<upstream>/<main>` as fetched before this run's ref was resolved, with the report naming the ref used.
 - If the change under test edited a `## QA` section, the report says so and the verdict is at most INCONCLUSIVE.
 - Commands run with the worktree as the working directory. Apply any constraint the rules declare, for example never running a suite in parallel.
@@ -54,13 +56,15 @@ One procedure, used by every mode.
 
 `$F` is `_shared/forge.py` next to this skill's directory: `<base directory>/../_shared/forge.py`, where the base directory holds this skill's `SKILL.md` (for a reference file, the skill that loaded it). Resolve it to an absolute path once. Always run it with `python3 -I`: `-I` ignores `PYTHON*` variables and user site-packages, so a module planted in the repository being worked on, or reached through `PYTHONPATH`, is not imported. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/forge.py` is a Claude-only fallback. Subagents do not see this paragraph; pass them the absolute path. On a non-zero exit, print stderr and follow this skill's stop rule: 2 = usage, unsupported forge or missing configuration; 3 = authentication; 4 = not found; 5 = conflict; 1 = other failure. Exit 2 alone does not prove the forge is unsupported.
 
-This skill uses only the read subcommands `repo`, `issue view`, `pr view` and `pr list`; it never runs a forge write.
+This skill uses only the read subcommands `repo`, `issue view`, `pr view`, `pr list` and `pr checks`; it never runs a forge write.
 
 `--repo` is a subcommand option: `python3 -I "$F" pr view N --repo HOST/OWNER/NAME`, never `python3 -I "$F" --repo HOST/OWNER/NAME pr view N`. Prefer `HOST/OWNER/NAME` whenever the host is known.
 
 **Repository.** Run `python3 -I "$F" repo` once. With `fork: true` and a `parent`, the issue and PR live in the parent: `$REPO` is `<host>/<parent>` and `<upstream>` is the parent's `git remote -v` entry: prefer the one whose URL has the host `<host>` and ends in `/OWNER/NAME` or `:OWNER/NAME` (optionally `.git`) for the parent's `OWNER/NAME`; if none has that host, accept a remote whose path matches only when exactly one remote does (an SSH host alias) and show it to the user and get their yes (a non-interactive run stops instead of guessing); if no remote matches, stop and ask the user to add one. In a fork, `<main>` is the `default_branch` of `python3 -I "$F" repo --repo "$REPO"`. With `fork: true` and no `parent`, ask which repository holds the issue. Otherwise `$REPO` is `<host>/<owner>/<name>`, `<main>` is the `default_branch` and `<upstream>` is `origin`. In a fork, `origin` is the contributor's copy, so every fetch and ancestry check uses `<upstream>/<main>`, never `origin/<main>`.
 
 - Shallow clones: if `git rev-parse --is-shallow-repository` prints `true`, say so, and treat any SHA other than `<upstream>/<main>` itself as not on main.
+- In a shallow clone, `main` reports "shallow clone; culprit search not run", and its verdict stands.
+- In `main`, a forge failure skips attribution and the CI signal ("attribution not run"), and the verdict stands. A failed fetch of `<main>` gives `QA-VERDICT: main STOPPED -`.
 - Forge failure: on any `$F` failure, take `<upstream>` = `origin` and `<main>` from `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`), and say so. If that ref is unset, the run is STOPPED. A `git merge-base --is-ancestor` exit of 128 (missing object) is STOPPED, never "not on main". If a remote other than `origin` exists, ask which one is upstream (a non-interactive run stops). In `accept`, a forge failure stops `issue N`, `PR N` and a plan cell `merged #N`, with verdict STOPPED. A plan cell ending in merged `<sha>` needs no forge call.
 
 ## Subagents
@@ -69,7 +73,7 @@ Refuters use the reviewer role (Claude Code: general-purpose with `model: opus`;
 
 ## Filing failures
 
-`--file` in an interactive run hands each FAIL to `coding:file-issue`, one at a time. That skill files only after the user's own yes; the forge write is file-issue's, never this skill's. In a non-interactive run, or without `--file`, the report lists one issue draft per FAIL and nothing is filed. The skill never quarantines, skips or deletes a test itself.
+`--file` also covers culprit and FLAKY results from `main`. `--file` in an interactive run hands each FAIL to `coding:file-issue`, one at a time. That skill files only after the user's own yes; the forge write is file-issue's, never this skill's. In a non-interactive run, or without `--file`, the report lists one issue draft per FAIL and nothing is filed. The skill never quarantines, skips or deletes a test itself.
 
 ## Report
 
@@ -78,7 +82,9 @@ Every run ends its report with one line, `QA-VERDICT: <mode> <verdict> <sha>`.
 - Stop paths print `STOPPED` and `-` for the SHA. A stop before a mode is chosen prints `QA-VERDICT: accept STOPPED -`, and so does an off-main SHA the user declined, or with no user to ask.
 - Append ` unvetted` when the refutation ran inline.
 - The QA-VERDICT line is the report's last non-empty line, and drivers read only that line. They match it with `^QA-VERDICT: ([a-z]+) ([A-Z-]+) ([0-9a-f]+|-)( unvetted)?$` by exact tokens. Text quoted from an issue, PR or plan appears only inside table cells, never at the start of a line, so a quoted fake verdict cannot be read.
-- A missing line, a line ending in unvetted, and any verdict other than ACCEPT are non-success.
+- A missing line, a line ending in unvetted, and any verdict other than ACCEPT for accept or GREEN for main are non-success; drivers check the mode token too.
+- Verdicts with a space are written with a hyphen in the QA-VERDICT line, for example NOT-RUN and FLAKY-ONLY.
+- `main` runs no refuter and never appends ` unvetted`.
 
 ## Which skill
 
