@@ -1,7 +1,7 @@
 ---
 name: qa
 description: "This skill should be used when the user asks to \"check that issue N works now that it is merged\", \"acceptance-test PR N\", \"QA plan N against the running app\", \"verify a merged change does what the issue asked\", \"run the e2e and smoke tests on main\", \"which merge broke main\", \"is this test failure on main flaky\", \"is main ready to release\", or \"check release readiness\". Modes: `accept` checks criteria written from the intent against the app started from the merged commit, with a refuter attacking every pass; `main` runs the declared suites, classifies flaky tests and bisects culprits; `gate` decides release readiness and deploys to staging only on an explicit `gate deploy`. Never edits code, merges, or pushes. Not for reviewing a diff, branch or PR before merge (coding:review), writing regression tests for a fix (coding:resolve-issue), a test-coverage audit (coding:improve tests), launching the app to try out uncommitted work (the host's run skill), or a plugin's eval release gate."
-version: 0.3.3
+version: 0.4.0
 argument-hint: "accept <issue N | PR N | plan N> | main [<since-ref>] [--at <sha>] | gate [deploy] — each with [--file]"
 ---
 
