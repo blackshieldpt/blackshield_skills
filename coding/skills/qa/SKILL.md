@@ -11,6 +11,7 @@ Modes are chosen by the invocation text (Claude Code: `$ARGUMENTS`; other hosts 
 When the invocation text is empty, take the request from the user's message. Natural language that names an issue, PR or plan to check maps to `accept`. Natural language about which merge broke main, or about running suites on main, maps to `main`. Anything else: say which modes exist and ask (a non-interactive run stops).
 
 - `accept <issue N | PR N | plan N>` → check one merged change against the intent that asked for it: follow `references/acceptance.md`.
+- `main [<since-ref>] [--at <sha>]` → run the suites on the upstream default branch at one SHA, classify failures and search for the culprit merge: follow `references/post-merge.md`.
 
 ## Hard rules
 
