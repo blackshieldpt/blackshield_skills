@@ -144,8 +144,10 @@ flowchart TD
   that the app touches no shared database, email or webhook, and state-changing requests need it.
   Both count only when declared at the first parent of the merge point. Every report ends with
   one `QA-VERDICT: <mode> <verdict> <sha>` line. Drivers read only the last non-empty line and
-  treat every verdict other than ACCEPT (GREEN for `main`), and any `unvetted` one, as non-success, so hosts
-  without subagents never yield success. Without network (for example Codex's default sandbox)
+  treat as success only ACCEPT for `accept`, GREEN for `main`, and GO or DEPLOYED for `gate`
+  (a `gate deploy` request succeeds only on DEPLOYED). Any line ending in `unvetted` is
+  non-success, so `accept` never succeeds on a host without subagents; `main` and `gate` run no
+  refuter. Without network (for example Codex's default sandbox)
   the fetch and forge reads make the run STOPPED.
   `main [<since-ref>] [--at <sha>]` runs the suites on the default branch, classifies each failing
   test by three isolated re-runs (flaky, order-dependent or consistent), and searches the
@@ -253,7 +255,7 @@ which has no evals:
 claude plugin eval ./<plugin> --no-publish --trust-plugin
 ```
 
-- A full coding suite is 35 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
+- A full coding suite is 36 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
   case. Use `--case <glob>` or `--runs 1` while iterating.
 - Cases with a `context.scaffold_script` need `--scaffold`. Without it the fixture is not
   placed and the case is a false negative.
