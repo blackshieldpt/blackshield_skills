@@ -10,7 +10,7 @@ The Hard rules, project rules, app start procedure and report format are in `SKI
 - Then fetch tags best-effort: `git fetch --tags <upstream>`. A failure there, such as a moved tag that git refuses to clobber, costs only the default range. Report it.
 - `<sha>` is the full SHA from `git rev-parse --verify <upstream>/<main>^{commit}`, or from the `--at` argument normalized the same way (the `gate` mode passes one, and then this procedure prints no QA-VERDICT line of its own). An `--at` SHA must pass `git merge-base --is-ancestor <sha> <upstream>/<main>`, or the verdict is STOPPED. Use `<sha>` everywhere below, never the literal `HEAD`.
 - Check `git version`. Below 2.29, the culprit search is not run ("git < 2.29").
-- If `<scratchpad>/qa-main-<first 12 of sha>` is still registered from a crashed run, remove it with `git worktree remove --force` first. Create a disposable detached worktree: `git worktree add --detach <scratchpad>/qa-main-<first 12 of sha> <sha>`. Remove it with `--force` on every exit path.
+- Create a disposable detached worktree: `git worktree add --detach <scratchpad>/qa-main-<run id> <sha>`, with `<run id>` unique per run as SKILL.md defines it. Remove it with `--force` on every exit path. Never remove a worktree this run did not create: list any other registered `qa-main-*` worktree (crashed or concurrent) in the report instead.
 - On the forge-failure fallback, `<upstream>` may be a fork's own copy, so GREEN is not possible: the verdict is at most NOT RUN ("upstream unverified").
 
 ## 2. Run
