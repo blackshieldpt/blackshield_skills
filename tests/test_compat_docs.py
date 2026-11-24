@@ -33,6 +33,10 @@ ROWS = [
         "Plan workflows",
         ["yes", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`)"],
     ),
+    (
+        "`qa`",
+        ["yes", "yes (`forge.py`; install `_shared`)", "yes (`forge.py`; install `_shared`; needs network)", "yes (`forge.py`)"],
+    ),
 ]
 
 
@@ -212,7 +216,7 @@ class CompatibilityDocsTest(unittest.TestCase):
         paths += sorted(CODING.glob("*/references/*.md"))
         paths += sorted(CODING.glob("*/scripts/*.sh"))
         paths.append(HARNESS)
-        self.assertGreaterEqual(len(paths), 30)
+        self.assertGreaterEqual(len(paths), 32)
         for path in paths:
             rel = path.relative_to(REPO_ROOT).as_posix()
             text = read(path)
@@ -236,7 +240,7 @@ class CompatibilityDocsTest(unittest.TestCase):
     def test_skills_use_host_neutral_harness_forms(self):
         fallback = re.compile(r"Claude(-only| Code) fall ?back|fall back to the Claude-only")
         skills = sorted(CODING.glob("*/SKILL.md"))
-        self.assertGreaterEqual(len(skills), 8)
+        self.assertGreaterEqual(len(skills), 9)
         for path in skills:
             text = flat(read(path))
             text = re.sub(r"\(Claude Code: `\$ARGUMENTS`[;)]", "", text)
@@ -442,6 +446,8 @@ class CompatibilityDocsTest(unittest.TestCase):
             "coding/skills/resolve-issue/references/pr-and-merge.md",
             "coding/skills/resolve-issue/references/review.md",
             "coding/skills/resolve-issue/references/second-attempt.md",
+            "coding/skills/qa/SKILL.md",
+            "coding/skills/qa/references/acceptance.md",
         }
         for rel in sorted(allowed):
             with self.subTest(allowed=rel):
@@ -492,8 +498,8 @@ class CompatibilityDocsTest(unittest.TestCase):
                 with self.subTest(paragraph=rel):
                     self.assertIn(paragraph, flat(text))
                     self.assertIn(F_ISOLATED, flat(text))
-        self.assertGreaterEqual(calls, 48)
-        self.assertGreaterEqual(len(carriers), 7, carriers)
+        self.assertGreaterEqual(calls, 58)
+        self.assertGreaterEqual(len(carriers), 9, carriers)
 
     def test_shared_directory_is_documentation_and_adapter_only(self):
         shared = sorted(

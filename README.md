@@ -8,7 +8,7 @@ and can also be installed as plain Agent Skills in OpenCode and Codex.
 | Plugin | Path | Skills |
 |---|---|---|
 | [Blueprint](#blueprint) | `blueprint/` | `blueprint` |
-| [Coding](#coding) | `coding/` | `resolve-issue`, `file-issue`, `review`, `audit-codebase-security`, `improve`, `review-plan`, `execute-plan`, `reconcile-plans` |
+| [Coding](#coding) | `coding/` | `resolve-issue`, `file-issue`, `review`, `audit-codebase-security`, `improve`, `review-plan`, `execute-plan`, `reconcile-plans`, `qa` |
 | [ClickHouse](#clickhouse) | `clickhouse/` | `clickhouse` |
 
 ### Blueprint
@@ -127,6 +127,29 @@ flowchart TD
   audit-coverage gaps.
   *Triggers:* "reconcile the plans", "what's the status of the plans".
 
+#### QA
+
+- **`qa`** checks a merged change against the intent that asked for it. `accept <issue N | PR N | plan N>`
+  finds the merged commit, writes acceptance criteria from the issue, PR or plan (never from the
+  diff), starts the app from a fresh worktree of that commit, exercises each criterion against it,
+  and has a fresh-context refuter attack every pass. A criterion that was not exercised is NOT RUN,
+  never a pass. The skill is read-only: it never edits code, merges or pushes, and `--file` hands
+  each failure to `file-issue` for your yes. It runs only commands the repo declares in a `## QA`
+  section of `- <name>: <command>` lines: `setup`, `run`, `stop`, `ready`, plus optional
+  `ready-timeout`, `version` and `isolated: yes`. Rules are read at the ref (not from the working
+  checkout) from `CLAUDE.md`, `AGENTS.md` or a `qa-rules` project skill. An adopting repo must
+  provide a `setup` that recreates gitignored files in a fresh worktree, a foreground `run`, and
+  those rules. Every command gets `QA_WORKTREE` and `QA_PRIMARY`. `version` is required for
+  ACCEPT and must ask the running app which build it serves (not git); `isolated: yes` declares
+  that the app touches no shared database, email or webhook, and state-changing requests need it.
+  Both count only when declared at the first parent of the merge point. Every report ends with
+  one `QA-VERDICT: <mode> <verdict> <sha>` line. Drivers read only the last non-empty line and
+  treat every verdict other than ACCEPT, and any `unvetted` one, as non-success, so hosts
+  without subagents never yield success. Without network (for example Codex's default sandbox)
+  the fetch and forge reads make the run STOPPED.
+  *Triggers:* "check that issue N works now that it is merged", "acceptance-test PR N",
+  "QA plan N against the running app", "verify a merged change does what the issue asked".
+
 ### ClickHouse
 
 Practices, tunables and gotchas for designing, querying and operating ClickHouse.
@@ -163,6 +186,7 @@ merges.
 | `review` PR reads, `reconcile-plans` PR fallback | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`) | yes (`forge.py`) |
 | `file-issue`, `resolve-issue`, `review --comment`, `improve --issues` | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`) | yes (`forge.py`; token) |
 | Plan workflows | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`) | yes (`forge.py`) |
+| `qa` | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`; needs network) | yes (`forge.py`) |
 
 The forge adapter and the harness contract live in `coding/skills/_shared/`.
 `review` PR reads and the `reconcile-plans` PR fallback run through the adapter: `gh` on GitHub, the
@@ -209,7 +233,7 @@ which has no evals:
 claude plugin eval ./<plugin> --no-publish --trust-plugin
 ```
 
-- A full coding suite is 31 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
+- A full coding suite is 33 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
   case. Use `--case <glob>` or `--runs 1` while iterating.
 - Cases with a `context.scaffold_script` need `--scaffold`. Without it the fixture is not
   placed and the case is a false negative.
