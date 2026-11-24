@@ -12,6 +12,7 @@ When the invocation text is empty, take the request from the user's message. Nat
 
 - `accept <issue N | PR N | plan N>` → check one merged change against the intent that asked for it: follow `references/acceptance.md`.
 - `main [<since-ref>] [--at <sha>]` → run the suites on the upstream default branch at one SHA, classify failures and search for the culprit merge: follow `references/post-merge.md`.
+- `gate [deploy]` → decide whether the upstream default branch's current commit is fit to release, and deploy to staging only on the user's explicit request (Hard rule 7): follow `references/release-gate.md`.
 
 ## Hard rules
 
