@@ -61,6 +61,7 @@ One procedure, used by every mode.
 
 - Poll `ready` in tool calls of 60 seconds or less, until it succeeds while the recorded process is still alive, or until `ready-timeout` passes. On timeout the app is NOT RUN.
 - If the rules declare `version`, run it after `ready`. It is a command that asks the running app, over the channel the criteria use, which build it serves, and its output must contain at least the first 7 characters of the SHA under test. A version command that reads git or the worktree does not count. A mismatch makes the app NOT RUN ("serving another build"). Without a declared version, no run can be ACCEPT: the report says "artifact provenance unverified", and an all-PASS run is INCONCLUSIVE.
+- In `main`, when the skill started the app for a suite and no version is declared, GREEN is not possible: the verdict is at most NOT RUN ("artifact provenance unverified"), so `gate` cannot GO on it.
 - Once run has started, every exit path stops the app: run `stop` when declared; if the group is still alive, `kill -TERM -- -<pgid>`, wait 10 seconds, then `kill -KILL -- -<pgid>`. Before `run` has started, stop nothing. The answering process on the pre-probe path is not ours.
 
 ## Repository and forge
@@ -77,7 +78,7 @@ This skill uses only the read subcommands `repo`, `issue view`, `pr view`, `pr l
 - In a shallow clone, `main` reports "shallow clone; culprit search not run", and its verdict stands.
 - In `main`, a forge failure skips attribution and the CI signal ("attribution not run"); the verdict stands, except that GREEN becomes NOT RUN ("upstream unverified"), as post-merge.md step 1 says. A failed fetch of `<main>` gives `QA-VERDICT: main STOPPED -`.
 - A gate run on the forge-failure fallback is STOPPED and never deploys.
-- Forge failure: on any `$F` failure, take `<upstream>` = `origin` and `<main>` from `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`), and say so. If that ref is unset, the run is STOPPED. A `git merge-base --is-ancestor` exit of 128 (missing object) is STOPPED, never "not on main". If a remote other than `origin` exists, ask which one is upstream (a non-interactive run stops). In `accept`, a forge failure stops `issue N`, `PR N` and a plan cell `merged #N`, with verdict STOPPED. A plan cell ending in merged `<sha>` needs no forge call.
+- Forge failure: on any `$F` failure, take `<upstream>` = `origin` and `<main>` from `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`), and say so. If that ref is unset, the run is STOPPED. A `git merge-base --is-ancestor` exit of 128 (missing object) is STOPPED, never "not on main". If a remote other than `origin` exists, ask which one is upstream (a non-interactive run stops). In `accept`, a forge failure stops `issue N`, `PR N` and a plan cell `merged #N`, with verdict STOPPED. A plan cell ending in merged `<sha>` needs no forge call, but on the fallback no run can be ACCEPT: the report says "upstream unverified", because `origin` may be a fork, and an all-PASS run is INCONCLUSIVE.
 
 ## Subagents
 

@@ -94,7 +94,7 @@ Claim "integration-only: green alone, red after merge" only when all of these ho
 Pick the verdict from this list: first match wins, in this order:
 
 1. RED: any CONSISTENT, ORDER-DEPENDENT or UNCLASSIFIED failure, or any build/crash failure. Name the culprit PR, the bare commit, "pre-existing", "culprit not searched", "culprit not confirmed", "test first appears at C", "no range" (no since-ref could be resolved), "since-ref not on main's first-parent history", "since-ref not testable", "git < 2.29" or "shallow clone".
-2. NOT RUN, with the reasons (uncovered test commands included).
+2. NOT RUN, with the reasons (uncovered test commands and unverified artifact provenance included).
 3. FLAKY-ONLY: at least one failure, and every failure FLAKY.
 4. GREEN: `suite` ran and passed, and every other declared suite ran and passed.
 
