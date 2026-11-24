@@ -216,7 +216,7 @@ class CompatibilityDocsTest(unittest.TestCase):
         paths += sorted(CODING.glob("*/references/*.md"))
         paths += sorted(CODING.glob("*/scripts/*.sh"))
         paths.append(HARNESS)
-        self.assertGreaterEqual(len(paths), 32)
+        self.assertGreaterEqual(len(paths), 33)
         for path in paths:
             rel = path.relative_to(REPO_ROOT).as_posix()
             text = read(path)
@@ -448,6 +448,7 @@ class CompatibilityDocsTest(unittest.TestCase):
             "coding/skills/resolve-issue/references/second-attempt.md",
             "coding/skills/qa/SKILL.md",
             "coding/skills/qa/references/acceptance.md",
+            "coding/skills/qa/references/post-merge.md",
         }
         for rel in sorted(allowed):
             with self.subTest(allowed=rel):
@@ -498,8 +499,8 @@ class CompatibilityDocsTest(unittest.TestCase):
                 with self.subTest(paragraph=rel):
                     self.assertIn(paragraph, flat(text))
                     self.assertIn(F_ISOLATED, flat(text))
-        self.assertGreaterEqual(calls, 58)
-        self.assertGreaterEqual(len(carriers), 9, carriers)
+        self.assertGreaterEqual(calls, 61)
+        self.assertGreaterEqual(len(carriers), 10, carriers)
 
     def test_shared_directory_is_documentation_and_adapter_only(self):
         shared = sorted(

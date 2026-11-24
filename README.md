@@ -144,9 +144,15 @@ flowchart TD
   that the app touches no shared database, email or webhook, and state-changing requests need it.
   Both count only when declared at the first parent of the merge point. Every report ends with
   one `QA-VERDICT: <mode> <verdict> <sha>` line. Drivers read only the last non-empty line and
-  treat every verdict other than ACCEPT, and any `unvetted` one, as non-success, so hosts
+  treat every verdict other than ACCEPT (GREEN for `main`), and any `unvetted` one, as non-success, so hosts
   without subagents never yield success. Without network (for example Codex's default sandbox)
   the fetch and forge reads make the run STOPPED.
+  `main [<since-ref>] [--at <sha>]` runs the suites on the default branch, classifies each failing
+  test by three isolated re-runs (flaky, order-dependent or consistent), and searches the
+  first-parent history for the culprit merge. The rules add `suite`, `e2e`, `smoke` and
+  `test-one`, with `needs-app` and `self-hosted` marks; `suite` must cover every unit suite the
+  repo has. Adopting repos need a full clone with tags for the culprit search, a `setup` that works
+  at historical commits, and git 2.29 or newer. GREEN joins ACCEPT as the success set.
   *Triggers:* "check that issue N works now that it is merged", "acceptance-test PR N",
   "QA plan N against the running app", "verify a merged change does what the issue asked".
 
@@ -233,7 +239,7 @@ which has no evals:
 claude plugin eval ./<plugin> --no-publish --trust-plugin
 ```
 
-- A full coding suite is 33 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
+- A full coding suite is 34 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
   case. Use `--case <glob>` or `--runs 1` while iterating.
 - Cases with a `context.scaffold_script` need `--scaffold`. Without it the fixture is not
   placed and the case is a false negative.
