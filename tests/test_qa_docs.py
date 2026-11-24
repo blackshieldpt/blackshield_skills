@@ -133,7 +133,8 @@ class QaSkillTest(unittest.TestCase):
         self.assertIn("QA-VERDICT: <mode> <verdict> <sha>", self.skill)
         self.assertIn(
             "A missing line, a line ending in unvetted, and any verdict other than ACCEPT "
-            "for accept or GREEN for main are non-success; drivers check the mode token too.",
+            "for accept, GREEN for main, or GO or DEPLOYED for gate are non-success; "
+            "drivers check the mode token too, and a gate deploy request succeeds only on DEPLOYED.",
             self.skill,
         )
         self.assertIn(
