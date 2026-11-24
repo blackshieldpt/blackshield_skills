@@ -133,7 +133,7 @@ flowchart TD
   finds the merged commit, writes acceptance criteria from the issue, PR or plan (never from the
   diff), starts the app from a fresh worktree of that commit, exercises each criterion against it,
   and has a fresh-context refuter attack every pass. A criterion that was not exercised is NOT RUN,
-  never a pass. The skill is read-only: it never edits code, merges or pushes, and `--file` hands
+  never a pass. The skill never edits code, merges or pushes; `gate deploy` changes staging. `--file` hands
   each failure to `file-issue` for your yes. It runs only commands the repo declares in a `## QA`
   section of `- <name>: <command>` lines: `setup`, `run`, `stop`, `ready`, plus optional
   `ready-timeout`, `version` and `isolated: yes`. Rules are read at the ref (not from the working
@@ -153,6 +153,20 @@ flowchart TD
   `test-one`, with `needs-app` and `self-hosted` marks; `suite` must cover every unit suite the
   repo has. Adopting repos need a full clone with tags for the culprit search, a `setup` that works
   at historical commits, and git 2.29 or newer. GREEN joins ACCEPT as the success set.
+  `gate [deploy]` decides whether one SHA of the default branch is fit to release, resting on a
+  `main` run for that exact SHA. Its verdicts are GO, HOLD, DEPLOYED, ROLLBACK-FAILED and STOPPED.
+  A test that is newly flaky holds the gate; only a test on `known-flaky` as declared at the last
+  annotated tag, or one that passes 1 or 2 of 3 isolated runs at that tag, can still reach GO.
+  The deploy runs only when the user's own typed invocation begins with the skill call followed
+  by `gate deploy`: `/coding:qa gate deploy` (Claude Code), `$qa gate deploy` (Codex),
+  `@qa gate deploy` or the host's explicit skill call (OpenCode). A skill chosen implicitly from
+  its description never deploys. GO and DEPLOYED join the success set, and ROLLBACK-FAILED means a
+  person must look. The adopter contract: the deploy names `staging-version`, `deploy-staging`,
+  `health-check` (which verifies the SHA staging serves), `smoke-staging` and `rollback` (safe to
+  run after a partial deploy); deploy credentials in the environment, named in `deploy-env`;
+  git-tracked rules; suite and setup commands that never target a deployed environment; annotated
+  tags only on released commits (lightweight or CI build tags are ignored); and drivers that
+  serialize deploys (without a lock, one driver's rollback can undo another's DEPLOYED).
   *Triggers:* "check that issue N works now that it is merged", "acceptance-test PR N",
   "QA plan N against the running app", "verify a merged change does what the issue asked".
 
@@ -239,7 +253,7 @@ which has no evals:
 claude plugin eval ./<plugin> --no-publish --trust-plugin
 ```
 
-- A full coding suite is 34 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
+- A full coding suite is 35 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
   case. Use `--case <glob>` or `--runs 1` while iterating.
 - Cases with a `context.scaffold_script` need `--scaffold`. Without it the fixture is not
   placed and the case is a false negative.
