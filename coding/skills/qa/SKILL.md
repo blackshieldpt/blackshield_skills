@@ -100,7 +100,7 @@ Every run ends its report with one line, `QA-VERDICT: <mode> <verdict> <sha>`.
 - When gate runs main, main's QA-VERDICT line is omitted; a report ends with exactly one QA-VERDICT line.
 - A missing line, a line ending in unvetted, and any verdict other than ACCEPT for accept, GREEN for main, or GO or DEPLOYED for gate are non-success; drivers check the mode token too, and a gate deploy request succeeds only on DEPLOYED.
 - Verdicts with a space are written with a hyphen in the QA-VERDICT line, for example NOT-RUN and FLAKY-ONLY.
-- `main` runs no refuter and never appends ` unvetted`.
+- `main` and `gate` run no refuter and never append ` unvetted`.
 
 ## Which skill
 

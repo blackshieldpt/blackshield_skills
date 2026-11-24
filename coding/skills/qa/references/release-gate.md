@@ -13,7 +13,7 @@
 
 ## 2. Rule integrity
 
-Parse the `## QA` declarations (each name, marks, command, `known-flaky` and `deploy-env`) from every candidate rule source (`CLAUDE.md`, `AGENTS.md`, the tracked `qa-rules` skill) at both `<since-ref>` and `<sha>`, and note which source wins by precedence at each. If any parsed declaration or the winning source differs, Rules changed inside the range make the gate HOLD, and the report names the differences. Prose edits outside `## QA` do not count. Scripts that the rule commands call are merged code: at the gate SHA they are trusted for suites, and the deploy steps below never run them from the gate SHA. With no `<since-ref>`, rules cannot be compared: the report says "rules not compared (no since-ref)", and the gate cannot GO on FLAKY-ONLY or deploy (see 3 and 4).
+Parse the `## QA` declarations (each name, marks, command, `known-flaky` and `deploy-env`) from every candidate rule source (`CLAUDE.md`, `AGENTS.md`, the tracked `qa-rules` skill) at both `<since-ref>` and `<sha>`, and note which source wins by precedence at each. If any parsed declaration or the winning source differs, Rules changed inside the range make the gate HOLD, and the report names the differences. Prose edits outside `## QA` do not count. Scripts that the rule commands call are merged code: at the gate SHA they are trusted for suites, and the deploy steps below never run them from the gate SHA. With no `<since-ref>`, rules cannot be compared: the report says "rules not compared (no since-ref)", and the gate cannot GO on FLAKY-ONLY or deploy (see 3 and 4). A `main` run in which the skill starts the app for a suite cannot be GREEN then either, because its `version` cannot count without the gate's `<since-ref>` (SKILL.md, Project rules and Starting the app).
 
 ## 3. Decision
 
@@ -58,4 +58,4 @@ Include:
 - the flaky list with each test's qualification evidence;
 - when deploying, each deploy command with its exit code and redacted output, plus the health baseline.
 
-End with exactly one line, `QA-VERDICT: gate <GO|HOLD|DEPLOYED|ROLLBACK-FAILED|STOPPED> <sha>`.
+End with exactly one line, `QA-VERDICT: gate <GO|HOLD|DEPLOYED|ROLLBACK-FAILED|STOPPED> <sha>`, printing `-` in place of `<sha>` when STOPPED.

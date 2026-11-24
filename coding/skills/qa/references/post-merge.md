@@ -8,7 +8,7 @@ The Hard rules, project rules, app start procedure and report format are in `SKI
 
 - Run `git fetch <upstream> <main>`. On failure, the verdict is STOPPED.
 - Then fetch tags best-effort: `git fetch --tags <upstream>`. A failure there, such as a moved tag that git refuses to clobber, costs only the default range. Report it.
-- `<sha>` is the full SHA from `git rev-parse --verify <upstream>/<main>^{commit}`, or from the `--at` argument normalized the same way (plan 022's gate passes one). An `--at` SHA must pass `git merge-base --is-ancestor <sha> <upstream>/<main>`, or the verdict is STOPPED. Use `<sha>` everywhere below, never the literal `HEAD`.
+- `<sha>` is the full SHA from `git rev-parse --verify <upstream>/<main>^{commit}`, or from the `--at` argument normalized the same way (the `gate` mode passes one, and then this procedure prints no QA-VERDICT line of its own). An `--at` SHA must pass `git merge-base --is-ancestor <sha> <upstream>/<main>`, or the verdict is STOPPED. Use `<sha>` everywhere below, never the literal `HEAD`.
 - Check `git version`. Below 2.29, the culprit search is not run ("git < 2.29").
 - If `<scratchpad>/qa-main-<first 12 of sha>` is still registered from a crashed run, remove it with `git worktree remove --force` first. Create a disposable detached worktree: `git worktree add --detach <scratchpad>/qa-main-<first 12 of sha> <sha>`. Remove it with `--force` on every exit path.
 - On the forge-failure fallback, `<upstream>` may be a fork's own copy, so GREEN is not possible: the verdict is at most NOT RUN ("upstream unverified").
@@ -98,4 +98,4 @@ Pick the verdict from this list: first match wins, in this order:
 3. FLAKY-ONLY: at least one failure, and every failure FLAKY.
 4. GREEN: `suite` ran and passed, and every other declared suite ran and passed.
 
-Report `<sha>`, the range used, the suites that ran, those not declared and those uncovered. Known limits: a test renamed inside the range blames the renaming commit, and a direct push with a generic message ("fix tests") can be wrongly attributed. Remove the worktree and end with `QA-VERDICT: main <RED|NOT-RUN|FLAKY-ONLY|GREEN|STOPPED> <sha>`.
+Report `<sha>`, the range used, the suites that ran, those not declared and those uncovered. Known limits: a test renamed inside the range blames the renaming commit, and a direct push with a generic message ("fix tests") can be wrongly attributed. Remove the worktree and end with `QA-VERDICT: main <RED|NOT-RUN|FLAKY-ONLY|GREEN|STOPPED> <sha>`, printing `-` in place of `<sha>` when STOPPED. When `gate` runs this procedure, omit that line: the gate's own line ends the report.
