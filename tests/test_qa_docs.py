@@ -288,6 +288,10 @@ class QaSkillTest(unittest.TestCase):
             "the gate cannot GO on FLAKY-ONLY or deploy",
             "CI on the gate SHA not consulted",
             "rules not compared (no since-ref)",
+            "3. GREEN, with `suite` among the suites that ran → GO.",
+            "4. FLAKY-ONLY with a `<since-ref>` → GO only when every flaky test qualifies (below).",
+            "in a detached worktree at `<since-ref>` (with `setup` and the SKILL.md app procedure), "
+            "3 `test-one` runs give 1 or 2 passes.",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
@@ -332,6 +336,10 @@ class QaSkillTest(unittest.TestCase):
             "then poll `health-check <baseline>`.",
             "If that succeeds, the verdict is HOLD. If it fails, the verdict is ROLLBACK-FAILED",
             "All steps passed → DEPLOYED.",
+            "Read the deploy rules (the five deploy steps, `deploy-timeout` and `deploy-env`) "
+            "at `<since-ref>`.",
+            "Run `deploy-staging`. Poll `health-check <sha>` until it exits 0 or "
+            "`deploy-timeout` passes.",
         ):
             with self.subTest(sentence=sentence):
                 self.assertIn(sentence, self.gate)
@@ -344,6 +352,43 @@ class QaSkillTest(unittest.TestCase):
         )
         self.assertIn("on the fallback no run can be ACCEPT", self.skill)
         self.assertIn("unverified artifact provenance", self.post_merge)
+
+    def test_gate_deploy_requires_deploy_env(self) -> None:
+        text = self.gate
+        sentence = (
+            "When the invocation asks for a deploy, read `deploy-env` at `<since-ref>` first. "
+            "If there is no `<since-ref>`, or no `deploy-env` is declared there, "
+            "run no suite and do not deploy."
+        )
+        self.assertIn(sentence, text)
+        self.assertLess(text.index(sentence), text.index("Then run `main --at <sha>`"))
+        self.assertIn(
+            'The verdict is HOLD, unless it is STOPPED, with "deploy not run: missing `deploy-env`"',
+            text,
+        )
+        self.assertIn("carry deploy credentials; required for `gate deploy`)", self.skill)
+        self.assertIn(
+            "keep deploy credentials only in the variables deploy-env names.", self.skill
+        )
+
+    def test_main_version_needs_since_ref(self) -> None:
+        sentence = (
+            "In `main`, `version` is not judged by the first-parent rule above: it counts only "
+            "when the rules at `<since-ref>`"
+        )
+        for phrase in (
+            sentence,
+            "When `gate` runs `main`, the ref for `version` is the `<since-ref>` the gate "
+            "resolved, never one `main` resolves; the culprit range is unchanged.",
+            "A `version` that does not count is treated as undeclared.",
+            "With no `<since-ref>`, or one equal to `<sha>` or failing the first-parent check "
+            "in post-merge.md §4, `version` does not count.",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.skill)
+        self.assertLess(
+            self.skill.index("isolated: yes and version count only"), self.skill.index(sentence)
+        )
 
     def test_release_readiness_eval_fires_qa(self) -> None:
         case = yaml.safe_load(READINESS_EVAL.read_text(encoding="utf-8"))
