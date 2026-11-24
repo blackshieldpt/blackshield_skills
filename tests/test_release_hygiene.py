@@ -282,6 +282,16 @@ class ReleaseHygieneTests(unittest.TestCase):
             "qa version changed; update the release with the tests",
         )
 
+    def test_marketplace_descriptions_match_manifests(self) -> None:
+        marketplace = json.loads(read(REPO_ROOT / ".claude-plugin" / "marketplace.json"))
+        entries = {entry["name"]: entry for entry in marketplace["plugins"]}
+        for plugin, path in PLUGIN_MANIFESTS.items():
+            with self.subTest(plugin=plugin):
+                self.assertIn(plugin, entries)
+                self.assertEqual(
+                    entries[plugin].get("description"), json.loads(read(path))["description"]
+                )
+
     def test_license_scope_is_present(self) -> None:
         self.assertIn(
             "coding/skills/improve, review-plan, execute-plan and reconcile-plans are "

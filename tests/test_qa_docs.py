@@ -279,6 +279,8 @@ class QaSkillTest(unittest.TestCase):
         text = self.gate
         for phrase in (
             "first match wins",
+            "A `main` run in which the skill starts the app for a suite cannot be GREEN "
+            "then either",
             "Everything else → HOLD",
             "3 `test-one` runs give 1 or 2 passes.",
             "as read at <since-ref>, never at the gate SHA",
@@ -389,6 +391,40 @@ class QaSkillTest(unittest.TestCase):
         self.assertLess(
             self.skill.index("isolated: yes and version count only"), self.skill.index(sentence)
         )
+
+    def test_verdict_line_rules_agree(self) -> None:
+        self.assertIn("printing `-` in place of `<sha>` when STOPPED.", self.post_merge)
+        self.assertIn("printing `-` in place of `<sha>` when STOPPED.", self.gate)
+        self.assertIn(
+            "When `gate` runs this procedure, omit that line: the gate's own line ends the report.",
+            self.post_merge,
+        )
+        self.assertIn("and then this procedure prints no QA-VERDICT line of its own", self.post_merge)
+        self.assertIn("`main` and `gate` run no refuter and never append ` unvetted`.", self.skill)
+        for text in [self.skill, *self.refs]:
+            self.assertIsNone(re.search(r"plan \d{3}", text))
+
+    def test_readme_lists_every_trigger(self) -> None:
+        triggers = re.findall(r'\\"(.*?)\\"', self.description)
+        self.assertEqual(len(triggers), 9, triggers)
+        section = re.search(r"(?ms)^#### QA\n(.*?)(?=^###)", README.read_text(encoding="utf-8"))
+        self.assertIsNotNone(section, "README has no QA section")
+        body = flat(section.group(1))
+        listed = body[body.index("*Triggers:*"):]
+        for trigger in triggers:
+            with self.subTest(trigger=trigger):
+                self.assertIn(f'"{trigger}"', listed)
+        self.assertIn("Modes: `accept` checks criteria written from the intent", self.description)
+        self.assertIn("only on an explicit `gate deploy`", self.description)
+        self.assertNotIn('broke main\\", or', self.description)
+        self.assertIn(
+            "ACCEPT, and for GREEN or GO whenever the skill starts the app for a suite;", body
+        )
+        self.assertIn(
+            "`main` needs the same `version` at its `<since-ref>` (under `gate`, the gate's).",
+            body,
+        )
+        self.assertNotIn("Both count only when declared at the first parent", body)
 
     def test_release_readiness_eval_fires_qa(self) -> None:
         case = yaml.safe_load(READINESS_EVAL.read_text(encoding="utf-8"))
