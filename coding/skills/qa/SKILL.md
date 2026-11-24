@@ -64,7 +64,7 @@ This skill uses only the read subcommands `repo`, `issue view`, `pr view`, `pr l
 
 - Shallow clones: if `git rev-parse --is-shallow-repository` prints `true`, say so, and treat any SHA other than `<upstream>/<main>` itself as not on main.
 - In a shallow clone, `main` reports "shallow clone; culprit search not run", and its verdict stands.
-- In `main`, a forge failure skips attribution and the CI signal ("attribution not run"), and the verdict stands. A failed fetch of `<main>` gives `QA-VERDICT: main STOPPED -`.
+- In `main`, a forge failure skips attribution and the CI signal ("attribution not run"); the verdict stands, except that GREEN becomes NOT RUN ("upstream unverified"), as post-merge.md step 1 says. A failed fetch of `<main>` gives `QA-VERDICT: main STOPPED -`.
 - Forge failure: on any `$F` failure, take `<upstream>` = `origin` and `<main>` from `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`), and say so. If that ref is unset, the run is STOPPED. A `git merge-base --is-ancestor` exit of 128 (missing object) is STOPPED, never "not on main". If a remote other than `origin` exists, ask which one is upstream (a non-interactive run stops). In `accept`, a forge failure stops `issue N`, `PR N` and a plan cell `merged #N`, with verdict STOPPED. A plan cell ending in merged `<sha>` needs no forge call.
 
 ## Subagents
