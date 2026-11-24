@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 QA = REPO_ROOT / "coding" / "skills" / "qa"
 SKILL = QA / "SKILL.md"
 ACCEPTANCE = QA / "references" / "acceptance.md"
+POST_MERGE = QA / "references" / "post-merge.md"
 README = REPO_ROOT / "README.md"
 SILENT_EVAL = REPO_ROOT / "coding" / "evals" / "qa-silent-on-branch-review" / "case.yaml"
 
@@ -60,7 +61,8 @@ class QaSkillTest(unittest.TestCase):
         self.description = flat(description.group(1))
         self.skill = flat(match.group(2))
         self.acceptance = flat(ACCEPTANCE.read_text(encoding="utf-8"))
-        self.refs = [self.acceptance]
+        self.post_merge = flat(POST_MERGE.read_text(encoding="utf-8"))
+        self.refs = [self.acceptance, self.post_merge]
 
     def test_read_only(self) -> None:
         self.assertIn(RULE1, self.skill)
@@ -140,6 +142,64 @@ class QaSkillTest(unittest.TestCase):
             self.skill,
         )
         self.assertIn("never at the start of a line", self.skill)
+
+    def test_flaky_needs_three_isolated_reruns(self) -> None:
+        text = self.post_merge
+        for phrase in (
+            "re-run that test alone 3 times",
+            "Never classify a test FLAKY from a single re-run.",
+            "A test that fails in every whole-suite run is ORDER-DEPENDENT, not FLAKY",
+            "Grouping limits only the culprit search; every failing test gets its own flaky check.",
+            "A suite passed only when it exits 0 and its output shows no failing test.",
+            "Before a self-hosted suite, run ready if it is declared; "
+            "if it answers, the suite is NOT RUN.",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_bisect_walks_first_parent_merges(self) -> None:
+        text = self.post_merge
+        for phrase in (
+            "git bisect start --first-parent <sha> <since-ref>",
+            "git bisect reset",
+            "pre-existing at",
+            "exits 125",
+            "confirm the script exits 1 at `<sha>`",
+            "since-ref must exit 0",
+            "git rev-list --first-parent <sha> | grep -qx",
+            "exits 1 at C and exits 0 at C^1, 3 times each",
+            "git clean -ffdxq",
+            "--file never files against a bare commit.",
+            'exits 125" (bisect\'s skip): setup, app-start and ready failures, '
+            "a test that does not exist at that commit",
+            "A self-hosted suite with no declared ready is NOT RUN",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        self.assertEqual(text.count("git bisect start --first-parent"), 1)
+        self.assertEqual(text.count("exits 125"), 1)
+
+    def test_main_verdict_precedence(self) -> None:
+        text = self.post_merge
+        for phrase in (
+            "first match wins",
+            "RED: any CONSISTENT, ORDER-DEPENDENT or UNCLASSIFIED failure, "
+            "or any build/crash failure",
+            "FLAKY-ONLY: at least one failure",
+            "GREEN: `suite` ran and passed",
+            "A setup or suite failure whose output shows a compile or crash error "
+            "from the repo's own sources is a build or crash failure",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        self.assertLess(
+            text.index("RED: any"),
+            text.index("NOT RUN, with the reasons"),
+        )
+        self.assertLess(text.index("NOT RUN, with the reasons"), text.index("FLAKY-ONLY: at least"))
+        self.assertLess(text.index("FLAKY-ONLY: at least"), text.index("GREEN: "))
+        self.assertIn("suite must run every unit suite the repo has.", self.skill)
+        self.assertIn("NOT-RUN", self.skill)
 
     def test_readme_states_driver_contract(self) -> None:
         text = README.read_text(encoding="utf-8")
