@@ -242,7 +242,7 @@ class QaSkillTest(unittest.TestCase):
             "running them; the yes must be the human's next message, answering this "
             "confirmation, and any other message ends the deploy request.",
             "A gate run on the forge-failure fallback is STOPPED and never deploys.",
-            "Suite and setup commands must not target a deployed environment; "
+            "Suite, setup and channel commands must not target a deployed environment; "
             "only the deploy steps may.",
             "The variables named in deploy-env in the rules at the ref under test, and in gate "
             "also at the gate's <since-ref>, are unset for every command except the five deploy "
