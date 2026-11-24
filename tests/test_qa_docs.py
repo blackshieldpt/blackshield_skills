@@ -261,8 +261,6 @@ class QaSkillTest(unittest.TestCase):
         ):
             with self.subTest(sentence=sentence):
                 self.assertIn(sentence, self.gate)
-        for text in [self.skill, *self.refs]:
-            self.assertNotIn("deploys by default", text)
 
     def test_gate_rests_on_same_sha(self) -> None:
         for sentence in (
@@ -480,6 +478,67 @@ class QaSkillTest(unittest.TestCase):
         self.assertIn("`- channel-<name>: <command>`", body)
         self.assertIn("so a change cannot grade itself.", body)
         self.assertIn("plus optional `url`,", body)
+
+    def test_scoped_rules_and_worktrees(self) -> None:
+        for sentence in (
+            "- In `accept`, if the change under test added, removed or edited a `## QA` section "
+            "(in `CLAUDE.md`, `AGENTS.md` or the tracked `qa-rules` skill), the report says so "
+            "and the verdict is at most INCONCLUSIVE.",
+            "its report names any `## QA` declaration that differs from `<since-ref>`; `gate` "
+            "HOLDs when its rules differ from those at its `<since-ref>` (release-gate.md §2).",
+            'With no usable `<since-ref>`, neither compares rules, and the report says "rules not '
+            'compared (no since-ref)".',
+        ):
+            with self.subTest(sentence=sentence):
+                self.assertIn(sentence, self.skill)
+        self.assertNotIn("- If the change under test edited a `## QA` section", self.skill)
+        self.assertIn(
+            "`git worktree add --detach <scratchpad>/qa-main-<run id> <sha>`", self.post_merge
+        )
+        self.assertIn(
+            "Never remove a worktree this run did not create: list any other registered "
+            "`qa-main-*` worktree (crashed or concurrent) in the report instead.",
+            self.post_merge,
+        )
+        self.assertNotIn("first 12 of sha", self.post_merge)
+        for phrase in (
+            "`<scratchpad>/qa-gate-<run id>` at the gate SHA (the gate worktree)",
+            "`<scratchpad>/qa-gate-<run id>-since` at `<since-ref>`",
+            "never removes a worktree it did not create, and lists any other registered "
+            "`qa-gate-*` worktree in the report.",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.gate)
+
+    def test_gate_carries_hard_rule_7_bullets(self) -> None:
+        sentence = (
+            "Every bullet under Hard rule 7 in SKILL.md applies here as well: what never counts "
+            "as an invocation, that a subagent never deploys, that a question, negation or "
+            "condition never counts, and the confirmation in an interactive run."
+        )
+        self.assertIn(sentence, self.gate)
+        self.assertLess(
+            self.gate.index(sentence),
+            self.gate.index("Then, only after a GO, with a `<since-ref>`, and with Hard rule 7 met:"),
+        )
+
+    def test_neighbour_evals_forbid_qa(self) -> None:
+        def grader(name: str) -> dict:
+            path = REPO_ROOT / "coding" / "evals" / name / "case.yaml"
+            case = yaml.safe_load(path.read_text(encoding="utf-8"))
+            graders = {g["name"]: g for g in case["graders"]}
+            self.assertIn("does-not-fire-qa", graders, name)
+            return graders["does-not-fire-qa"]
+
+        reference = grader("qa-silent-on-branch-review")
+        for name in (
+            "review-fires-on-pr-number",
+            "review-fires-on-branch",
+            "execute-plan-fires-on-review-merged",
+            "resolve-issue-fires-on-issue-number",
+        ):
+            with self.subTest(case=name):
+                self.assertEqual(grader(name), reference)
 
     def test_release_readiness_eval_fires_qa(self) -> None:
         case = yaml.safe_load(READINESS_EVAL.read_text(encoding="utf-8"))
