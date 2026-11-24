@@ -44,11 +44,11 @@ Start the app with the procedure in `SKILL.md`. If the app is NOT RUN, every cri
 
 ## 5. Exercise
 
-For each criterion, use the cheapest black-box channel against the running app: an HTTP request (`curl`) or the app's own client interface. A request that changes state (POST, PUT, DELETE, anything that sends mail or calls out) needs the rules' `isolated: yes` or the user's yes in this session. Without either, that criterion is NOT RUN. A stored-state criterion counts only when the state was created in this run. Record the exact command and its observed output, redacted.
+For each criterion, use the cheapest channel that can observe it (Channels in `SKILL.md`): the built-in `http` or `cli`, or a channel declared at the channel baseline. A request that changes state (POST, PUT, DELETE, anything that sends mail or calls out) needs the rules' `isolated: yes` or the user's yes in this session. Without either, that criterion is NOT RUN. A stored-state criterion counts only when the state was created in this run. Record the exact command, the step file for a declared channel, and the observed output, redacted.
 
 ## 6. Refute
 
-One fresh-context refuter gets the full intent text, the criteria, the out-of-scope rows and the evidence, never the diff. It names every requirement with no criterion and no out-of-scope row; each one becomes a NOT RUN row, as does an out-of-scope row it shows to be behavioural. For each PASS it argues that the evidence does not prove the criterion: the wrong ref, a weaker paraphrase of the intent, an assertion that the zero value also satisfies, a stale process.
+One fresh-context refuter gets the full intent text, the criteria, the out-of-scope rows and the evidence (for a declared channel, its step files, raw output and doc), never the diff. It names every requirement with no criterion and no out-of-scope row; each one becomes a NOT RUN row, as does an out-of-scope row it shows to be behavioural. For each PASS it argues that the evidence does not prove the criterion: the wrong ref, a weaker paraphrase of the intent, an assertion that the zero value also satisfies, a stale process.
 
 Re-check every REFUTED item yourself. A PASS the refuter actually defeats becomes NOT RUN ("evidence insufficient"), never FAIL, unless your re-check observes the wrong behaviour.
 

@@ -135,7 +135,7 @@ flowchart TD
   and has a fresh-context refuter attack every pass. A criterion that was not exercised is NOT RUN,
   never a pass. The skill never edits code, merges or pushes; `gate deploy` changes staging. `--file` hands
   each failure to `file-issue` for your yes. It runs only commands the repo declares in a `## QA`
-  section of `- <name>: <command>` lines: `setup`, `run`, `stop`, `ready`, plus optional
+  section of `- <name>: <command>` lines: `setup`, `run`, `stop`, `ready`, plus optional `url`,
   `ready-timeout`, `version` and `isolated: yes`. Rules are read at the ref (not from the working
   checkout) from `CLAUDE.md`, `AGENTS.md` or a `qa-rules` project skill. An adopting repo must
   provide a `setup` that recreates gitignored files in a fresh worktree, a foreground `run`, and
@@ -152,6 +152,11 @@ flowchart TD
   non-success, so `accept` never succeeds on a host without subagents; `main` and `gate` run no
   refuter. Without network (for example Codex's default sandbox)
   the fetch and forge reads make the run STOPPED.
+  `accept` exercises criteria through channels: `http` (against a loopback `url` the rules declare)
+  and `cli` are built in, and a repo adds others (a browser, gRPC, a mobile emulator) as
+  `- channel-<name>: <command>` rules with a git-tracked `channel-<name>-doc` listing the actions.
+  The command gets a JSON file of steps in `QA_STEPS` and prints raw observations; the skill judges
+  the criterion. Channels run from the commit before the change, so a change cannot grade itself.
   `main [<since-ref>] [--at <sha>]` runs the suites on the default branch, classifies each failing
   test by three isolated re-runs (flaky, order-dependent or consistent), and searches the
   first-parent history for the culprit merge. The rules add `suite`, `e2e`, `smoke` and
