@@ -185,10 +185,12 @@ flowchart TD
   project, merge it to the default branch before the change you want to test, and declare
   `- channel-web: npx playwright test -c qa/playwright.config.ts` and
   `- channel-web-doc: qa/channel.md`. `channel.spec.ts` reads the steps from `QA_STEPS`, refuses
-  any origin other than the loopback `QA_URL`, and prints one JSON line of observations per
+  a `goto` to any origin other than the loopback `QA_URL`, fails the run when a step ends on
+  another origin, and prints one JSON line of observations per
   step; `channel.md` lists its actions and marks the read-only ones. Its config has no
   `webServer` and no retries, so it drives only the app the skill started and never repeats a
-  state change.
+  state change. The project needs `@playwright/test` as a dependency and its `setup` must
+  install the browser (`npx playwright install chromium`).
 
 ### ClickHouse
 

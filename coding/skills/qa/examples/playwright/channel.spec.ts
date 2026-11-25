@@ -7,7 +7,7 @@
 // observations. Exit 0 means every step ran; a thrown error exits non-zero, and the skill
 // then reports the criterion NOT RUN, never FAIL. Pass/fail is judged by the skill, so
 // this file never prints a verdict.
-import { test } from '@playwright/test';
+import { errors, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 type Args = Record<string, string>;
@@ -96,6 +96,17 @@ test('qa channel', async ({ page }) => {
       case 'count': {
         const selector = arg(args, 'selector');
         observe(i, action, { selector, count: await page.locator(selector).count() });
+        break;
+      }
+      case 'wait': {
+        const selector = arg(args, 'selector');
+        const visible = await page.locator(selector).first()
+          .waitFor({ state: 'visible', timeout: 5000 })
+          .then(() => true, (e: unknown) => {
+            if (e instanceof errors.TimeoutError) return false;
+            throw e;
+          });
+        observe(i, action, { selector, visible });
         break;
       }
       case 'url': {

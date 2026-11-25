@@ -15,6 +15,7 @@ Playwright selectors, for example `role=button[name="Save"]`, `text=Saved` or
 | `visible` | `selector` | read-only | whether the first match is visible |
 | `count` | `selector` | read-only | number of matches |
 | `url` | | read-only | current URL |
+| `wait` | `selector` | read-only | selector, whether the first match became visible within 5 seconds |
 
 Actions without the `read-only` mark count as changing state: a criterion that uses
 one needs `isolated: yes` in the project rules, or the user's yes during the run.
@@ -23,3 +24,9 @@ Each step prints one line, `{"step": <i>, "action": "<action>", "observed": {...
 A selector that matches nothing makes `click`, `fill` and `press` time out, and one
 that matches several elements fails them (Playwright's strict mode). Either fails the
 run, and the skill then reports the criterion NOT RUN, never FAIL.
+
+`text`, `visible` and `count` read the page at once. After a `click` or `press` that
+updates the page without loading a new one, put a `wait` step on an element the update
+shows before reading it. A `wait` gives up after 5 seconds and prints `"visible": false`,
+so an update that never appears is judged from the observations, not lost as a failed run.
+Any other error in a `wait`, such as an invalid selector, still fails the run.
