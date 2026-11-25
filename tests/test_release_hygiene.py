@@ -236,7 +236,7 @@ class ReleaseHygieneTests(unittest.TestCase):
         coding_manifest = json.loads(read(PLUGIN_MANIFESTS["coding"]))
         self.assertEqual(
             coding_manifest["version"],
-            "0.20.2",
+            "0.24.3",
             "coding plugin version changed; update the release with the tests",
         )
         review = REPO_ROOT / "coding" / "skills" / "review" / "SKILL.md"
@@ -275,6 +275,22 @@ class ReleaseHygieneTests(unittest.TestCase):
             "0.2.0",
             "execute-plan version changed; update the release with the tests",
         )
+        qa = REPO_ROOT / "coding" / "skills" / "qa" / "SKILL.md"
+        self.assertEqual(
+            frontmatter(qa).get("version"),
+            "0.4.3",
+            "qa version changed; update the release with the tests",
+        )
+
+    def test_marketplace_descriptions_match_manifests(self) -> None:
+        marketplace = json.loads(read(REPO_ROOT / ".claude-plugin" / "marketplace.json"))
+        entries = {entry["name"]: entry for entry in marketplace["plugins"]}
+        for plugin, path in PLUGIN_MANIFESTS.items():
+            with self.subTest(plugin=plugin):
+                self.assertIn(plugin, entries)
+                self.assertEqual(
+                    entries[plugin].get("description"), json.loads(read(path))["description"]
+                )
 
     def test_license_scope_is_present(self) -> None:
         self.assertIn(

@@ -8,7 +8,7 @@ and can also be installed as plain Agent Skills in OpenCode and Codex.
 | Plugin | Path | Skills |
 |---|---|---|
 | [Blueprint](#blueprint) | `blueprint/` | `blueprint` |
-| [Coding](#coding) | `coding/` | `resolve-issue`, `file-issue`, `review`, `audit-codebase-security`, `improve`, `review-plan`, `execute-plan`, `reconcile-plans` |
+| [Coding](#coding) | `coding/` | `resolve-issue`, `file-issue`, `review`, `audit-codebase-security`, `improve`, `review-plan`, `execute-plan`, `reconcile-plans`, `qa` |
 | [ClickHouse](#clickhouse) | `clickhouse/` | `clickhouse` |
 
 ### Blueprint
@@ -127,6 +127,71 @@ flowchart TD
   audit-coverage gaps.
   *Triggers:* "reconcile the plans", "what's the status of the plans".
 
+#### QA
+
+- **`qa`** checks a merged change against the intent that asked for it. `accept <issue N | PR N | plan N>`
+  finds the merged commit, writes acceptance criteria from the issue, PR or plan (never from the
+  diff), starts the app from a fresh worktree of that commit, exercises each criterion against it,
+  and has a fresh-context refuter attack every pass. A criterion that was not exercised is NOT RUN,
+  never a pass. The skill never edits code, merges or pushes; `gate deploy` changes staging. `--file` hands
+  each failure to `file-issue` for your yes. It runs only commands the repo declares in a `## QA`
+  section of `- <name>: <command>` lines: `setup`, `run`, `stop`, `ready`, plus optional `url`,
+  `ready-timeout`, `version` and `isolated: yes`. Rules are read at the ref (not from the working
+  checkout) from `CLAUDE.md`, `AGENTS.md` or a `qa-rules` project skill. An adopting repo must
+  provide a `setup` that recreates gitignored files in a fresh worktree, a foreground `run`, and
+  those rules. Every command gets `QA_WORKTREE` and `QA_PRIMARY`. `version` is required for
+  ACCEPT, and for GREEN or GO whenever the skill starts the app for a suite; it must ask the
+  running app which build it serves (not git). `isolated: yes` declares that the app touches no
+  shared database, email or webhook, and state-changing requests need it. Neither counts when
+  the change under test added it: `accept` needs each at the first parent of the merge point
+  (else `isolated: yes` never counts), and `main` needs the same `version` at its `<since-ref>`
+  (under `gate`, the gate's). Every report ends with
+  one `QA-VERDICT: <mode> <verdict> <sha>` line. Drivers read only the last non-empty line and
+  treat as success only ACCEPT for `accept`, GREEN for `main`, and GO or DEPLOYED for `gate`
+  (a `gate deploy` request succeeds only on DEPLOYED). Any line ending in `unvetted` is
+  non-success, so `accept` never succeeds on a host without subagents; `main` and `gate` run no
+  refuter. Without network (for example Codex's default sandbox)
+  the fetch and forge reads make the run STOPPED.
+  `accept` exercises criteria through channels: `http` (against a loopback `url` the rules declare)
+  and `cli` are built in, and a repo adds others (a browser, gRPC, a mobile emulator) as
+  `- channel-<name>: <command>` rules with a git-tracked `channel-<name>-doc` listing the actions.
+  The command gets a JSON file of steps in `QA_STEPS` and prints raw observations; the skill judges
+  the criterion. Channels run from the commit before the change, so a change cannot grade itself.
+  `main [<since-ref>] [--at <sha>]` runs the suites on the default branch, classifies each failing
+  test by three isolated re-runs (flaky, order-dependent or consistent), and searches the
+  first-parent history for the culprit merge. The rules add `suite`, `e2e`, `smoke` and
+  `test-one`, with `needs-app` and `self-hosted` marks; `suite` must cover every unit suite the
+  repo has. Adopting repos need a full clone with tags for the culprit search, a `setup` that works
+  at historical commits, and git 2.29 or newer. GREEN joins ACCEPT as the success set.
+  `gate [deploy]` decides whether one SHA of the default branch is fit to release, resting on a
+  `main` run for that exact SHA. Its verdicts are GO, HOLD, DEPLOYED, ROLLBACK-FAILED and STOPPED.
+  A test that is newly flaky holds the gate; only a test on `known-flaky` as declared at the last
+  annotated tag, or one that passes 1 or 2 of 3 isolated runs at that tag, can still reach GO.
+  The deploy runs only when the user's own typed invocation begins with the skill call followed
+  by `gate deploy`: `/coding:qa gate deploy` (Claude Code), `$qa gate deploy` (Codex),
+  `@qa gate deploy` or the host's explicit skill call (OpenCode). A skill chosen implicitly from
+  its description never deploys. GO and DEPLOYED join the success set, and ROLLBACK-FAILED means a
+  person must look. The adopter contract: the deploy names `staging-version`, `deploy-staging`,
+  `health-check` (which verifies the SHA staging serves), `smoke-staging` and `rollback` (safe to
+  run after a partial deploy); deploy credentials in the environment, named in `deploy-env`;
+  git-tracked rules; suite and setup commands that never target a deployed environment; annotated
+  tags only on released commits (lightweight or CI build tags are ignored); and drivers that
+  serialize deploys (without a lock, one driver's rollback can undo another's DEPLOYED).
+  *Triggers:* "check that issue N works now that it is merged", "acceptance-test PR N",
+  "QA plan N against the running app", "verify a merged change does what the issue asked",
+  "run the e2e and smoke tests on main", "which merge broke main", "is this test failure on
+  main flaky", "is main ready to release", "check release readiness".
+  `coding/skills/qa/examples/playwright/` is a working sample channel. Copy it to `qa/` in the
+  project, merge it to the default branch before the change you want to test, and declare
+  `- channel-web: npx playwright test -c qa/playwright.config.ts` and
+  `- channel-web-doc: qa/channel.md`. `channel.spec.ts` reads the steps from `QA_STEPS`, refuses
+  a `goto` to any origin other than the loopback `QA_URL`, fails the run when a step ends on
+  another origin, and prints one JSON line of observations per
+  step; `channel.md` lists its actions and marks the read-only ones. Its config has no
+  `webServer` and no retries, so it drives only the app the skill started and never repeats a
+  state change. The project needs `@playwright/test` as a dependency and its `setup` must
+  install the browser (`npx playwright install chromium`).
+
 ### ClickHouse
 
 Practices, tunables and gotchas for designing, querying and operating ClickHouse.
@@ -163,6 +228,7 @@ merges.
 | `review` PR reads, `reconcile-plans` PR fallback | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`) | yes (`forge.py`) |
 | `file-issue`, `resolve-issue`, `review --comment`, `improve --issues` | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`) | yes (`forge.py`; token) |
 | Plan workflows | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`) | yes (`forge.py`) |
+| `qa` | yes | yes (`forge.py`; install `_shared`) | yes (`forge.py`; install `_shared`; needs network) | yes (`forge.py`) |
 
 The forge adapter and the harness contract live in `coding/skills/_shared/`.
 `review` PR reads and the `reconcile-plans` PR fallback run through the adapter: `gh` on GitHub, the
@@ -209,7 +275,7 @@ which has no evals:
 claude plugin eval ./<plugin> --no-publish --trust-plugin
 ```
 
-- A full coding suite is 31 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
+- A full coding suite is 36 cases × 2 runs × 2 arms at roughly $0.10 a run for a trigger
   case. Use `--case <glob>` or `--runs 1` while iterating.
 - Cases with a `context.scaffold_script` need `--scaffold`. Without it the fixture is not
   placed and the case is a false negative.
