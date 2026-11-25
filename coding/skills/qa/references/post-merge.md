@@ -12,6 +12,7 @@ The Hard rules, project rules, app start procedure and report format are in `SKI
 - Check `git version`. Below 2.29, the culprit search is not run ("git < 2.29").
 - Create a disposable detached worktree: `git worktree add --detach <scratchpad>/qa-main-<run id> <sha>`, with `<run id>` unique per run as SKILL.md defines it. Remove it with `--force` on every exit path. Never remove a worktree this run did not create: list any other registered `qa-main-*` worktree (crashed or concurrent) in the report instead.
 - On the forge-failure fallback, `<upstream>` may be a fork's own copy, so GREEN is not possible: the verdict is at most NOT RUN ("upstream unverified").
+- Resolve `<since-ref>` now, before `setup` runs, by the rules in §4, whether or not anything is bisected later. Every command this run starts has the deploy-env variables unset that are named in the rules at `<sha>`, and at `<since-ref>` whenever it names a commit, even one that fails §4's first-parent check (SKILL.md's deploy-env bullet). When `gate` started this run, the variables in the set it passes are unset as well; a `--at` the user typed is a standalone run.
 
 ## 2. Run
 
@@ -40,7 +41,7 @@ For each failing test, re-run that test alone 3 times at the same commit with `t
 
 ## 4. Range
 
-Only for CONSISTENT failures and build/crash failures. ORDER-DEPENDENT failures are not bisected: `test-one` passes at every commit, so bisect would blame `<sha>`. Report "culprit not searched" for them.
+The culprit search runs only for CONSISTENT failures and build/crash failures; `<since-ref>` itself is resolved in §1 by the rules below. ORDER-DEPENDENT failures are not bisected: `test-one` passes at every commit, so bisect would blame `<sha>`. Report "culprit not searched" for them.
 
 - A `<since-ref>` argument must lie on main's first-parent line: `git rev-list --first-parent <sha> | grep -qx "$(git rev-parse <since-ref>^{commit})"`. Otherwise report "since-ref not on main's first-parent history; culprit search not run". A tag on a merged release branch passes `--is-ancestor` yet breaks a first-parent bisect.
 - With no argument, use `git describe --tags --abbrev=0 --first-parent <sha>^`. If there is no such tag, or it is fewer than 10 first-parent commits back, use the 50th first-parent ancestor instead: `git rev-list --first-parent -n 51 <sha> | tail -1`. Report which one was used.
@@ -66,10 +67,10 @@ Write a script to the scratchpad directory, outside the worktree.
 
 - First, look for a PR number in the culprit's own message: `(#N)`, `Merge pull request #N`, `Reviewed-on: …/pulls/N`. Verify it with `python3 -I "$F" pr view N --repo "$REPO"`: its `merge_commit` must equal the culprit. A failed `pr view` rejects only that candidate; only a failed `repo` or `pr list` skips attribution.
 - Failing that, match the culprit SHA against `merge_commit` in `python3 -I "$F" pr list --repo "$REPO" --state merged --limit 200`.
-- Failing that (an earlier commit of a rebase merge), walk forward with `git rev-list --reverse --first-parent --ancestry-path <culprit>..<sha>` to the first commit that equals some PR's `merge_commit`. Attribute the culprit to that PR only when all of these hold:
+- Failing that (an earlier commit of a rebase merge), walk forward with `git rev-list --reverse --first-parent --ancestry-path <culprit>..<sha>` to the first commit that equals some PR's `merge_commit`, and read that PR with `python3 -I "$F" pr view N --repo "$REPO"`: `pr list` records always carry `commit_messages: []`, so the checks below use the `pr view` output; if that `pr view` fails, report the bare commit. Attribute the culprit to that PR only when all of these hold:
   - that `merge_commit` has one parent (a rebase or fast-forward landing; squash and true merges never land their own commits on the first-parent line);
   - every first-parent commit from C through `merge_commit` matches, in order, the last entries of its `commit_messages`, compared after stripping whitespace;
-  - the PR has fewer than 100 commits (the adapter truncates larger ones).
+  - the PR has from 1 to 99 `commit_messages` (the adapter truncates at 100).
 - Otherwise report the bare commit: a direct push, a bot commit, or a PR outside the window. --file never files against a bare commit.
 
 ## 7. CI signal

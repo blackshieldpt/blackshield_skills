@@ -245,11 +245,13 @@ class QaSkillTest(unittest.TestCase):
             "Suite, setup and channel commands must not target a deployed environment; "
             "only the deploy steps may.",
             "The variables named in deploy-env in the rules at the ref under test, in accept also "
-            "at the channel baseline when it is known, and in gate also at the gate's "
-            "<since-ref>, are unset for every command except the five deploy steps; gate applies "
-            "that set to the main run it starts.",
-            'When accept\'s channel baseline is unknown, the report says "deploy-env read at the '
-            'ref under test only".',
+            "at the channel baseline when it is known, in main also at its own `<since-ref>` "
+            "(post-merge.md §1), and in gate also at the gate's <since-ref>, are unset for every "
+            "command except the five deploy steps; gate applies that set to the main run it "
+            "starts.",
+            'When accept\'s channel baseline is unknown, or main\'s `<since-ref>` names no '
+            'commit or equals `<sha>`, the report says "deploy-env read at the ref under test '
+            'only".',
         ):
             with self.subTest(sentence=sentence):
                 self.assertIn(sentence, self.skill)
