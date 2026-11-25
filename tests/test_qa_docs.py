@@ -543,6 +543,63 @@ class QaSkillTest(unittest.TestCase):
             with self.subTest(case=name):
                 self.assertEqual(grader(name), reference)
 
+    def test_issue_mode_reads_pr_commits(self) -> None:
+        self.assertIn(
+            "Whichever PR you test, read it with `python3 -I \"$F\" pr view <number> --repo "
+            "\"$REPO\"` and "
+            "take its `commit_messages` from that output: `pr list` records always carry "
+            "`commit_messages: []`, and SKILL.md's channel baseline and first-parent rule need "
+            "the PR's real list.",
+            self.acceptance,
+        )
+        self.assertLess(
+            self.acceptance.index("Whichever PR you test, read it with"),
+            self.acceptance.index("With none, ask the user for the ref"),
+        )
+        self.assertIn(
+            "the number of the PR's `commit_messages` as `pr view` returns them, if that is "
+            "from 1 to 99.",
+            self.skill,
+        )
+        self.assertNotIn("`commit_messages`, if that is under 100.", self.skill)
+        self.assertIn(
+            "It also cannot be found when the PR has no `commit_messages`, or when",
+            self.skill,
+        )
+
+    def test_accept_lists_other_worktrees(self) -> None:
+        self.assertIn(
+            "Never remove a worktree this run did not create: list any other registered "
+            "`qa-accept-*` worktree (crashed or concurrent) in the report instead.",
+            self.acceptance,
+        )
+        self.assertNotIn("recorded process group is dead", self.acceptance)
+
+    def test_sample_channel_matches_docs(self) -> None:
+        sample = REPO_ROOT / "coding" / "skills" / "qa" / "examples" / "playwright"
+        spec = (sample / "channel.spec.ts").read_text(encoding="utf-8")
+        doc = flat((sample / "channel.md").read_text(encoding="utf-8"))
+        readme = flat(README.read_text(encoding="utf-8"))
+        command = "npx playwright test -c qa/playwright.config.ts"
+        self.assertIn(f"`- channel-web: {command}`", self.skill)
+        self.assertIn(f"`- channel-web: {command}`", readme)
+        self.assertIn("case 'wait': {", spec)
+        self.assertIn(".waitFor({ state: 'visible', timeout: 5000 })", spec)
+        self.assertIn("import { errors, test } from '@playwright/test';", spec)
+        self.assertIn("if (e instanceof errors.TimeoutError) return false;", spec)
+        self.assertIn(
+            "| `wait` | `selector` | read-only | selector, whether the first match became visible "
+            "within 5 seconds |",
+            doc,
+        )
+        self.assertIn("put a `wait` step on an element the update shows before reading it.", doc)
+        self.assertIn(
+            "refuses a `goto` to any origin other than the loopback `QA_URL`, fails the run when "
+            "a step ends on another origin,",
+            readme,
+        )
+        self.assertIn("The project needs `@playwright/test` as a dependency", readme)
+
     def test_release_readiness_eval_fires_qa(self) -> None:
         case = yaml.safe_load(READINESS_EVAL.read_text(encoding="utf-8"))
         graders = {grader["name"]: grader for grader in case["graders"]}
