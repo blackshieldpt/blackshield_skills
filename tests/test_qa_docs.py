@@ -602,6 +602,33 @@ class QaSkillTest(unittest.TestCase):
         )
         self.assertIn("The project needs `@playwright/test` as a dependency", readme)
 
+    def test_main_resolves_since_ref_before_setup(self) -> None:
+        sentence = (
+            "Resolve `<since-ref>` now, before `setup` runs, by the rules in §4, whether or not "
+            "anything is bisected later. Every command this run starts has the deploy-env "
+            "variables unset that are named in the rules at `<sha>`, and at `<since-ref>` "
+            "whenever it names a commit, even one that fails §4's first-parent check (SKILL.md's "
+            "deploy-env bullet). When `gate` started this run, the variables in the set it passes "
+            "are unset as well; a `--at` the user typed is a standalone run."
+        )
+        self.assertIn(sentence, self.post_merge)
+        self.assertLess(self.post_merge.index(sentence), self.post_merge.index("## 2. Run"))
+        self.assertIn("`<since-ref>` itself is resolved in §1 by the rules below.", self.post_merge)
+        self.assertNotIn("Only for CONSISTENT failures", self.post_merge)
+
+    def test_attribution_reads_pr_commits(self) -> None:
+        self.assertIn(
+            "and read that PR with `python3 -I \"$F\" pr view N --repo \"$REPO\"`: `pr list` "
+            "records always carry `commit_messages: []`, so the checks below use the `pr view` "
+            "output; if that `pr view` fails, report the bare commit.",
+            self.post_merge,
+        )
+        self.assertIn(
+            "the PR has from 1 to 99 `commit_messages` (the adapter truncates at 100).",
+            self.post_merge,
+        )
+        self.assertNotIn("fewer than 100 commits", self.post_merge)
+
     def test_release_readiness_eval_fires_qa(self) -> None:
         case = yaml.safe_load(READINESS_EVAL.read_text(encoding="utf-8"))
         graders = {grader["name"]: grader for grader in case["graders"]}
