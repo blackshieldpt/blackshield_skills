@@ -244,9 +244,12 @@ class QaSkillTest(unittest.TestCase):
             "A gate run on the forge-failure fallback is STOPPED and never deploys.",
             "Suite, setup and channel commands must not target a deployed environment; "
             "only the deploy steps may.",
-            "The variables named in deploy-env in the rules at the ref under test, and in gate "
-            "also at the gate's <since-ref>, are unset for every command except the five deploy "
-            "steps; gate applies that set to the main run it starts.",
+            "The variables named in deploy-env in the rules at the ref under test, in accept also "
+            "at the channel baseline when it is known, and in gate also at the gate's "
+            "<since-ref>, are unset for every command except the five deploy steps; gate applies "
+            "that set to the main run it starts.",
+            'When accept\'s channel baseline is unknown, the report says "deploy-env read at the '
+            'ref under test only".',
         ):
             with self.subTest(sentence=sentence):
                 self.assertIn(sentence, self.skill)
@@ -439,7 +442,7 @@ class QaSkillTest(unittest.TestCase):
             "The channel's rule line, its doc and the `setup` run there are all read at the "
             "baseline.",
             '("channel setup failed")',
-            "stale-worktree cleanup judges it by the app's `qa-<run id>.pgid` record.",
+            "like the app's worktree, only the run that created it removes it.",
             "never in the app's `qa-<run id>.pgid` or `.log`.",
             "In the same call, `wait $!` for it and take the exit status `wait` returns;",
             'otherwise its criteria are NOT RUN ("channel `<name>` undocumented").',

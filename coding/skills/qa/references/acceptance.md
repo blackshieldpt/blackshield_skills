@@ -31,6 +31,7 @@ First, `git fetch <upstream> <main>`. If the fetch fails, the verdict is STOPPED
   - Keep PRs whose `base` is `<main>` and whose `closing_issues` contains N.
   - On Forgejo/Gitea (the `forge` field of the `repo` output), confirm each candidate by reading its title and body: there `closing_issues` is a regex that also matches "doesn't fix #N". On GitHub the list is server-computed (it includes sidebar links that never appear in the body), so trust it.
   - With several confirmed candidates, test the one whose `merge_commit` appears latest in `git rev-list --first-parent <upstream>/<main>`, and list the others.
+  - Whichever PR you test, read it with `python3 -I "$F" pr view <number> --repo "$REPO"` and take its `commit_messages` from that output: `pr list` records always carry `commit_messages: []`, and SKILL.md's channel baseline and first-parent rule need the PR's real list.
   - With none, ask the user for the ref (a non-interactive run stops). Never fall back to `<upstream>/<main>` silently. If exactly 200 PRs came back, say the scan may be truncated. On Forgejo/Gitea the adapter stops after scanning 1000 PRs, so an empty result there means "not found within the adapter's scan", never "none".
 - **A plan** → its row in `plans/README.md` in the current checkout (`plans/` is gitignored, so it exists only there). A `DONE` cell ending in merged `<sha>` gives that SHA. Resolve it to a full SHA and check its ancestry before mapping; if that check fails, skip the mapping and Hard rule 4 applies. Map it to its merge point on the first-parent line: the SHA itself when it is on that line, else the last line of `git rev-list --first-parent --ancestry-path <sha>..<upstream>/<main>`. Empty output is STOPPED. `merged #N` resolves through `pr view N`. A `DONE … not merged` cell, or any other status, means nothing merged: stop.
 
@@ -38,7 +39,7 @@ Then run `git merge-base --is-ancestor <sha> <upstream>/<main>`. A SHA that is n
 
 ## 4. Run
 
-Create a disposable detached worktree with `git worktree add --detach <scratchpad>/qa-accept-<run id> <sha>` (the same `<run id>` as the app's files). Remove any `qa-accept-*` worktree whose recorded process group is dead first, and remove it with `--force` on every exit path. Never use the host's worktree-isolation feature, which branches from the session HEAD.
+Create a disposable detached worktree with `git worktree add --detach <scratchpad>/qa-accept-<run id> <sha>` (the same `<run id>` as the app's files). Remove it with `--force` on every exit path. Never remove a worktree this run did not create: list any other registered `qa-accept-*` worktree (crashed or concurrent) in the report instead. Never use the host's worktree-isolation feature, which branches from the session HEAD.
 
 Start the app with the procedure in `SKILL.md`. If the app is NOT RUN, every criterion is NOT RUN and the verdict is INCONCLUSIVE.
 
